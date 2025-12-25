@@ -299,7 +299,7 @@ function startTimers() {
 
 // User status state
 let userStatus = {
-    cooldowns: { drug: 0, medical: 0, booster: 0 },
+    cooldowns: { drug: 0, medical: 0, booster: 0 },  // Store end timestamps (not durations)
     chain: { current: 0, timeout: 0, cooldown: 0 },
     lastFetch: 0,
     lastDismissedChainCount: 0,  // Track chain count when alert was dismissed
@@ -332,7 +332,14 @@ async function fetchUserStatus() {
         
         const data = await response.json();
         userStatus.lastFetch = Date.now();
-        userStatus.cooldowns = data.cooldowns;
+        
+        // Convert cooldown durations to end timestamps (server sends seconds remaining)
+        const now = Math.floor(Date.now() / 1000);
+        userStatus.cooldowns = {
+            drug: data.cooldowns.drug > 0 ? now + data.cooldowns.drug : 0,
+            medical: data.cooldowns.medical > 0 ? now + data.cooldowns.medical : 0,
+            booster: data.cooldowns.booster > 0 ? now + data.cooldowns.booster : 0,
+        };
         userStatus.chain = data.chain || { current: 0, timeout: 0, cooldown: 0 };
         
         // Update health bar
@@ -502,11 +509,10 @@ function checkChainBonusAlert(current) {
 
 function updateUserCooldowns() {
     const now = Math.floor(Date.now() / 1000);
-    const fetchAge = Math.floor((Date.now() - userStatus.lastFetch) / 1000);
     
-    // Drug cooldown
+    // Drug cooldown (cooldowns store end timestamps)
     if (elements.drugCd) {
-        const drugRemaining = Math.max(0, userStatus.cooldowns.drug - fetchAge);
+        const drugRemaining = Math.max(0, userStatus.cooldowns.drug - now);
         if (drugRemaining > 0) {
             elements.drugCd.textContent = formatCooldown(drugRemaining);
             elements.drugCd.className = 'cooldown-value active';
@@ -518,7 +524,7 @@ function updateUserCooldowns() {
     
     // Medical cooldown
     if (elements.medicalCd) {
-        const medRemaining = Math.max(0, userStatus.cooldowns.medical - fetchAge);
+        const medRemaining = Math.max(0, userStatus.cooldowns.medical - now);
         if (medRemaining > 0) {
             elements.medicalCd.textContent = formatCooldown(medRemaining);
             elements.medicalCd.className = 'cooldown-value active';
@@ -530,7 +536,7 @@ function updateUserCooldowns() {
     
     // Booster cooldown
     if (elements.boosterCd) {
-        const boostRemaining = Math.max(0, userStatus.cooldowns.booster - fetchAge);
+        const boostRemaining = Math.max(0, userStatus.cooldowns.booster - now);
         if (boostRemaining > 0) {
             elements.boosterCd.textContent = formatCooldown(boostRemaining);
             elements.boosterCd.className = 'cooldown-value active';
@@ -895,7 +901,7 @@ function renderTargetRow(target) {
         <tr class="${rowClass}" 
             data-target-id="${target.user_id}" 
             data-hospital-until="${target.hospital_until || 0}">
-            <td class="${timerClass}">--:--</td>
+            <td class="${timerClass}">${timerText}</td>
             <td class="name-cell">
                 <div class="player-links">
                     <a href="https://www.torn.com/profiles.php?XID=${target.user_id}" 
