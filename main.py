@@ -102,6 +102,11 @@ async def lifespan(app: FastAPI):
     # Shutdown - nothing to clean up since clients are per-request
 
 
+# Simple cache for claims to reduce Redis queries
+claims_cache = {"data": None, "timestamp": 0}
+CLAIMS_CACHE_TTL = 2  # Cache claims for 2 seconds
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Torn Ranked War Tracker",
@@ -191,8 +196,16 @@ async def get_war_status(
         # Update hospital states and reset claims for those who went back to hospital
         claim_mgr.update_hospital_states(all_targets)
 
+        # Get claims with caching to reduce Redis queries
+        now_ms = time.time()
+        if claims_cache["data"] is None or (now_ms - claims_cache["timestamp"]) > CLAIMS_CACHE_TTL:
+            claims = claim_mgr.get_all_claims()
+            claims_cache["data"] = claims
+            claims_cache["timestamp"] = now_ms
+        else:
+            claims = claims_cache["data"]
+
         # Enrich targets with claim info
-        claims = claim_mgr.get_all_claims()
         claims_by_target = {c.target_id: c for c in claims}
 
         for target in all_targets:
@@ -393,6 +406,9 @@ async def claim_target(request: ClaimRequest):
     Claim a target for attacking.
     Prevents other faction members from attacking the same person.
     """
+    # Invalidate claims cache so next status fetch gets fresh data
+    claims_cache["data"] = None
+    
     # Get target name from current status if available
     target_name = f"Player {request.target_id}"
 
@@ -422,6 +438,9 @@ async def unclaim_target(
     target_id: int, claimer_id: int = Query(..., description="ID of the user releasing the claim")
 ):
     """Release a claim on a target."""
+    # Invalidate claims cache
+    claims_cache["data"] = None
+    
     claim_mgr = get_claim_manager()
     success, message = claim_mgr.unclaim(target_id, claimer_id)
 
