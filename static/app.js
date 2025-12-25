@@ -334,28 +334,20 @@ async function fetchUserStatus() {
         
         const data = await response.json();
         
-        // Smooth cooldown updates - only update if significantly different to prevent jumps
-        const elapsedSinceLast = Math.floor((Date.now() - userStatus.cooldownsFetchTime) / 1000);
+        // Only update cooldown values if 30+ seconds have passed since last update
+        // Otherwise keep counting down smoothly client-side
+        const timeSinceLastCooldownUpdate = Date.now() - userStatus.cooldownsFetchTime;
+        if (timeSinceLastCooldownUpdate >= 30000 || userStatus.cooldownsFetchTime === 0) {
+            // 30+ seconds passed or first fetch - update cooldown values
+            userStatus.cooldowns = {
+                drug: data.cooldowns.drug || 0,
+                medical: data.cooldowns.medical || 0,
+                booster: data.cooldowns.booster || 0,
+            };
+            userStatus.cooldownsFetchTime = Date.now();
+        }
+        // If less than 30s, don't update cooldowns - let client-side countdown continue
         
-        // For each cooldown, check if server value makes sense given elapsed time
-        const updateCooldown = (oldVal, newVal) => {
-            if (newVal === 0) return 0; // Always update if ready
-            if (oldVal === 0) return newVal; // First fetch
-            const expected = oldVal - elapsedSinceLast;
-            // If server value is within 10s of expected, keep counting down smoothly
-            // Otherwise, trust server (someone used an item)
-            if (Math.abs(newVal - expected) < 10) {
-                return oldVal; // Keep old value, continue smooth countdown
-            }
-            return newVal; // Significant change, update
-        };
-        
-        userStatus.cooldowns = {
-            drug: updateCooldown(userStatus.cooldowns.drug, data.cooldowns.drug || 0),
-            medical: updateCooldown(userStatus.cooldowns.medical, data.cooldowns.medical || 0),
-            booster: updateCooldown(userStatus.cooldowns.booster, data.cooldowns.booster || 0),
-        };
-        userStatus.cooldownsFetchTime = Date.now();
         userStatus.lastFetch = Date.now();
         userStatus.chain = data.chain || { current: 0, timeout: 0, cooldown: 0 };
         
