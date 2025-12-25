@@ -145,6 +145,130 @@ header h1 {
     text-decoration: underline;
 }
 
+/* User Status Bar */
+.user-status-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: var(--bg-secondary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.user-status-bar.hidden {
+    display: none;
+}
+
+.user-status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.user-status-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 35px;
+}
+
+.bar-container {
+    width: 100px;
+    height: 16px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.bar-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+
+.health-bar .bar-fill {
+    background: linear-gradient(90deg, #ff4757, #ff6b81);
+}
+
+.energy-bar .bar-fill {
+    background: linear-gradient(90deg, #ffa502, #ffbe3d);
+}
+
+.nerve-bar .bar-fill {
+    background: linear-gradient(90deg, #3742fa, #5352ed);
+}
+
+.bar-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+}
+
+.cooldown-item {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    min-width: 55px;
+}
+
+.cooldown-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+
+.cooldown-value {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.cooldown-value.ready {
+    color: var(--success);
+}
+
+.cooldown-value.active {
+    color: var(--warning);
+}
+
+.status-item {
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-left: auto;
+}
+
+.status-state {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-state.okay {
+    color: var(--success);
+}
+
+.status-state.hospital {
+    color: var(--hospital-red);
+}
+
+.status-state.jail {
+    color: var(--warning);
+}
+
+.status-state.traveling {
+    color: var(--traveling-blue);
+}
 /* Buttons */
 .btn {
     padding: 6px 12px;

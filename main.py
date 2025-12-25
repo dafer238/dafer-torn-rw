@@ -242,6 +242,118 @@ async def get_war_status(
         await client.close()
 
 
+@app.get("/api/me")
+async def get_my_status(x_api_key: str = Header(None)):
+    """
+    Get current user's status including health, cooldowns, energy, etc.
+    Requires user's API key.
+    """
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key required")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.torn.com/user/",
+                params={
+                    "selections": "profile,bars,cooldowns,travel",
+                    "key": x_api_key,
+                },
+            )
+            data = response.json()
+
+            if "error" in data:
+                error = data["error"]
+                raise HTTPException(
+                    status_code=401 if error.get("code") == 2 else 400,
+                    detail=error.get("error", "API error"),
+                )
+
+            # Parse the response
+            now = int(time.time())
+
+            # Health
+            life = data.get("life", {})
+            health_current = life.get("current", 0)
+            health_max = life.get("maximum", 100)
+
+            # Energy
+            energy = data.get("energy", {})
+            energy_current = energy.get("current", 0)
+            energy_max = energy.get("maximum", 100)
+
+            # Nerve
+            nerve = data.get("nerve", {})
+            nerve_current = nerve.get("current", 0)
+            nerve_max = nerve.get("maximum", 50)
+
+            # Happy
+            happy = data.get("happy", {})
+            happy_current = happy.get("current", 0)
+            happy_max = happy.get("maximum", 1000)
+
+            # Cooldowns
+            cooldowns = data.get("cooldowns", {})
+            drug_cd = cooldowns.get("drug", 0)
+            medical_cd = cooldowns.get("medical", 0)
+            booster_cd = cooldowns.get("booster", 0)
+
+            # Travel status
+            travel = data.get("travel", {})
+            is_traveling = travel.get("time_left", 0) > 0
+            travel_destination = travel.get("destination", "")
+            travel_time_left = travel.get("time_left", 0)
+
+            # Status (hospital, jail, etc.)
+            status = data.get("status", {})
+            status_state = status.get("state", "Okay")
+            status_until = status.get("until", 0)
+
+            return {
+                "name": data.get("name", "Unknown"),
+                "player_id": data.get("player_id", 0),
+                "level": data.get("level", 0),
+                "health": {
+                    "current": health_current,
+                    "max": health_max,
+                    "percent": round(health_current / health_max * 100) if health_max > 0 else 0,
+                },
+                "energy": {
+                    "current": energy_current,
+                    "max": energy_max,
+                    "percent": round(energy_current / energy_max * 100) if energy_max > 0 else 0,
+                },
+                "nerve": {
+                    "current": nerve_current,
+                    "max": nerve_max,
+                    "percent": round(nerve_current / nerve_max * 100) if nerve_max > 0 else 0,
+                },
+                "happy": {
+                    "current": happy_current,
+                    "max": happy_max,
+                    "percent": round(happy_current / happy_max * 100) if happy_max > 0 else 0,
+                },
+                "cooldowns": {
+                    "drug": drug_cd,
+                    "medical": medical_cd,
+                    "booster": booster_cd,
+                },
+                "travel": {
+                    "traveling": is_traveling,
+                    "destination": travel_destination,
+                    "time_left": travel_time_left,
+                },
+                "status": {
+                    "state": status_state,
+                    "until": status_until,
+                },
+                "timestamp": now,
+            }
+
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Connection error: {str(e)}")
+
+
 @app.post("/api/claim", response_model=ClaimResponse)
 async def claim_target(request: ClaimRequest):
     """

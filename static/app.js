@@ -72,6 +72,20 @@ function cacheElements() {
     elements.levelMax = document.getElementById('level-max');
     elements.statsMin = document.getElementById('stats-min');
     elements.statsMax = document.getElementById('stats-max');
+    
+    // User status bar elements
+    elements.userStatusBar = document.getElementById('user-status-bar');
+    elements.healthFill = document.getElementById('health-fill');
+    elements.healthText = document.getElementById('health-text');
+    elements.energyFill = document.getElementById('energy-fill');
+    elements.energyText = document.getElementById('energy-text');
+    elements.nerveFill = document.getElementById('nerve-fill');
+    elements.nerveText = document.getElementById('nerve-text');
+    elements.drugCd = document.getElementById('drug-cd');
+    elements.medicalCd = document.getElementById('medical-cd');
+    elements.boosterCd = document.getElementById('booster-cd');
+    elements.playerState = document.getElementById('player-state');
+    elements.playerStatusItem = document.getElementById('player-status-item');
 }
 
 function loadConfig() {
@@ -233,11 +247,142 @@ function updateSortIndicators() {
 
 function startPolling() {
     fetchStatus();
+    fetchUserStatus();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
+    // Poll user status every 5 seconds (less frequent to save API calls)
+    state.userStatusInterval = setInterval(fetchUserStatus, 5000);
 }
 
 function startTimers() {
     state.timerInterval = setInterval(updateTimers, CONFIG.TIMER_INTERVAL);
+    // Update user cooldown timers every second
+    state.userCooldownInterval = setInterval(updateUserCooldowns, 1000);
+}
+
+// User status state
+let userStatus = {
+    cooldowns: { drug: 0, medical: 0, booster: 0 },
+    lastFetch: 0,
+};
+
+async function fetchUserStatus() {
+    if (!state.apiKey) return;
+    
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/me`, {
+            headers: { 'X-API-Key': state.apiKey }
+        });
+        
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        userStatus.lastFetch = Date.now();
+        userStatus.cooldowns = data.cooldowns;
+        
+        // Update health bar
+        if (elements.healthFill && elements.healthText) {
+            elements.healthFill.style.width = `${data.health.percent}%`;
+            elements.healthText.textContent = `${data.health.current}/${data.health.max}`;
+        }
+        
+        // Update energy bar
+        if (elements.energyFill && elements.energyText) {
+            elements.energyFill.style.width = `${data.energy.percent}%`;
+            elements.energyText.textContent = `${data.energy.current}/${data.energy.max}`;
+        }
+        
+        // Update nerve bar
+        if (elements.nerveFill && elements.nerveText) {
+            elements.nerveFill.style.width = `${data.nerve.percent}%`;
+            elements.nerveText.textContent = `${data.nerve.current}/${data.nerve.max}`;
+        }
+        
+        // Update player status
+        if (elements.playerState) {
+            const statusState = data.status.state;
+            let stateClass = 'okay';
+            let stateText = statusState;
+            
+            if (statusState === 'Hospital') {
+                stateClass = 'hospital';
+                const remaining = data.status.until - Math.floor(Date.now() / 1000);
+                if (remaining > 0) {
+                    stateText = `🏥 ${formatCooldown(remaining)}`;
+                }
+            } else if (statusState === 'Jail') {
+                stateClass = 'jail';
+                stateText = '⛓️ Jail';
+            } else if (data.travel.traveling) {
+                stateClass = 'traveling';
+                stateText = `✈️ ${data.travel.destination} (${formatCooldown(data.travel.time_left)})`;
+            } else if (statusState === 'Okay') {
+                stateText = '✅ Ready';
+            }
+            
+            elements.playerState.textContent = stateText;
+            elements.playerState.className = `status-state ${stateClass}`;
+        }
+        
+        // Initial cooldown update
+        updateUserCooldowns();
+        
+    } catch (error) {
+        console.error('Failed to fetch user status:', error);
+    }
+}
+
+function updateUserCooldowns() {
+    const now = Math.floor(Date.now() / 1000);
+    const fetchAge = Math.floor((Date.now() - userStatus.lastFetch) / 1000);
+    
+    // Drug cooldown
+    if (elements.drugCd) {
+        const drugRemaining = Math.max(0, userStatus.cooldowns.drug - fetchAge);
+        if (drugRemaining > 0) {
+            elements.drugCd.textContent = formatCooldown(drugRemaining);
+            elements.drugCd.className = 'cooldown-value active';
+        } else {
+            elements.drugCd.textContent = 'Ready';
+            elements.drugCd.className = 'cooldown-value ready';
+        }
+    }
+    
+    // Medical cooldown
+    if (elements.medicalCd) {
+        const medRemaining = Math.max(0, userStatus.cooldowns.medical - fetchAge);
+        if (medRemaining > 0) {
+            elements.medicalCd.textContent = formatCooldown(medRemaining);
+            elements.medicalCd.className = 'cooldown-value active';
+        } else {
+            elements.medicalCd.textContent = 'Ready';
+            elements.medicalCd.className = 'cooldown-value ready';
+        }
+    }
+    
+    // Booster cooldown
+    if (elements.boosterCd) {
+        const boostRemaining = Math.max(0, userStatus.cooldowns.booster - fetchAge);
+        if (boostRemaining > 0) {
+            elements.boosterCd.textContent = formatCooldown(boostRemaining);
+            elements.boosterCd.className = 'cooldown-value active';
+        } else {
+            elements.boosterCd.textContent = 'Ready';
+            elements.boosterCd.className = 'cooldown-value ready';
+        }
+    }
+}
+
+function formatCooldown(seconds) {
+    if (seconds <= 0) return 'Ready';
+    
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    
+    if (h > 0) {
+        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 async function fetchStatus(forceRefresh = false) {
