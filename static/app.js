@@ -37,6 +37,8 @@ let state = {
     isConnected: true,
     timerInterval: null,
     pollInterval: null,
+    // Optimistic claim cache - prevents flickering during updates
+    pendingClaims: {},  // { targetId: { claimed_by, claimed_by_id, timestamp } }
 };
 
 // DOM Elements
@@ -558,7 +560,38 @@ async function fetchStatus(forceRefresh = false) {
             state.maxClaimsPerUser = data.max_claims_per_user;
         }
         
-        state.targets = data.targets || [];
+        // Merge server claims with pending optimistic claims to prevent flickering
+        const serverTargets = data.targets || [];
+        const now = Date.now();
+        
+        // Clean up old pending claims (older than 10 seconds)
+        for (const targetId in state.pendingClaims) {
+            if (now - state.pendingClaims[targetId].timestamp > 10000) {
+                delete state.pendingClaims[targetId];
+            }
+        }
+        
+        // Apply pending claims to targets that don't have claim info from server
+        for (const target of serverTargets) {
+            const pending = state.pendingClaims[target.user_id];
+            if (pending) {
+                // If server confirms the claim, remove from pending
+                if (target.claimed_by_id === pending.claimed_by_id) {
+                    delete state.pendingClaims[target.user_id];
+                }
+                // If server says unclaimed but we have a recent pending claim, use pending
+                else if (!target.claimed_by && (now - pending.timestamp < 5000)) {
+                    target.claimed_by = pending.claimed_by;
+                    target.claimed_by_id = pending.claimed_by_id;
+                }
+                // If server says someone else claimed it, trust server
+                else if (target.claimed_by && target.claimed_by_id !== pending.claimed_by_id) {
+                    delete state.pendingClaims[target.user_id];
+                }
+            }
+        }
+        
+        state.targets = serverTargets;
         state.claims = data.active_claims || [];
         state.lastUpdate = data.last_updated;
         state.isConnected = true;
@@ -888,6 +921,21 @@ async function handleClaim(targetId) {
         return;
     }
     
+    // Optimistically add the claim immediately to prevent flickering
+    state.pendingClaims[parseInt(targetId)] = {
+        claimed_by: state.userName,
+        claimed_by_id: parseInt(state.userId),
+        timestamp: Date.now()
+    };
+    
+    // Update UI immediately
+    const target = state.targets.find(t => t.user_id === parseInt(targetId));
+    if (target) {
+        target.claimed_by = state.userName;
+        target.claimed_by_id = parseInt(state.userId);
+        renderTargets();
+    }
+    
     try {
         const response = await fetch(`${CONFIG.API_BASE}/claim`, {
             method: 'POST',
@@ -906,18 +954,36 @@ async function handleClaim(targetId) {
         
         if (data.success) {
             showToast(data.message, 'success');
+            // Refresh to get server confirmation
             fetchStatus(true);
         } else {
+            // Remove optimistic claim on failure
+            delete state.pendingClaims[parseInt(targetId)];
             showToast(data.message || 'Failed to claim target', 'error');
+            fetchStatus(true);
         }
     } catch (error) {
         console.error('Claim error:', error);
+        // Remove optimistic claim on error
+        delete state.pendingClaims[parseInt(targetId)];
         showToast('Network error claiming target', 'error');
+        fetchStatus(true);
     }
 }
 
 async function handleUnclaim(targetId) {
     if (!state.userId) return;
+    
+    // Optimistically remove the claim immediately
+    delete state.pendingClaims[parseInt(targetId)];
+    
+    // Update UI immediately
+    const target = state.targets.find(t => t.user_id === parseInt(targetId));
+    if (target) {
+        target.claimed_by = null;
+        target.claimed_by_id = null;
+        renderTargets();
+    }
     
     try {
         const response = await fetch(
@@ -935,10 +1001,12 @@ async function handleUnclaim(targetId) {
             fetchStatus(true);
         } else {
             showToast(data.detail || 'Failed to release claim', 'error');
+            fetchStatus(true);
         }
     } catch (error) {
         console.error('Unclaim error:', error);
         showToast('Network error releasing claim', 'error');
+        fetchStatus(true);
     }
 }
 
