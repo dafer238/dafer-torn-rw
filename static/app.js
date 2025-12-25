@@ -18,6 +18,7 @@ let state = {
     targets: [],
     claims: [],
     lastUpdate: 0,
+    targetsFetchTime: 0,  // Track when we fetched target data
     userId: null,
     userName: null,
     apiKey: null,
@@ -299,7 +300,8 @@ function startTimers() {
 
 // User status state
 let userStatus = {
-    cooldowns: { drug: 0, medical: 0, booster: 0 },  // Store end timestamps (not durations)
+    cooldowns: { drug: 0, medical: 0, booster: 0 },  // Store original cooldown durations from server
+    cooldownsFetchTime: 0,  // When we fetched the cooldowns
     chain: { current: 0, timeout: 0, cooldown: 0 },
     lastFetch: 0,
     lastDismissedChainCount: 0,  // Track chain count when alert was dismissed
@@ -331,15 +333,15 @@ async function fetchUserStatus() {
         if (!response.ok) return;
         
         const data = await response.json();
-        userStatus.lastFetch = Date.now();
         
-        // Convert cooldown durations to end timestamps (server sends seconds remaining)
-        const now = Math.floor(Date.now() / 1000);
+        // Store the original cooldown values and when we fetched them
         userStatus.cooldowns = {
-            drug: data.cooldowns.drug > 0 ? now + data.cooldowns.drug : 0,
-            medical: data.cooldowns.medical > 0 ? now + data.cooldowns.medical : 0,
-            booster: data.cooldowns.booster > 0 ? now + data.cooldowns.booster : 0,
+            drug: data.cooldowns.drug || 0,
+            medical: data.cooldowns.medical || 0,
+            booster: data.cooldowns.booster || 0,
         };
+        userStatus.cooldownsFetchTime = Date.now();
+        userStatus.lastFetch = Date.now();
         userStatus.chain = data.chain || { current: 0, timeout: 0, cooldown: 0 };
         
         // Update health bar
@@ -508,11 +510,12 @@ function checkChainBonusAlert(current) {
 }
 
 function updateUserCooldowns() {
-    const now = Math.floor(Date.now() / 1000);
+    // Calculate elapsed time since we fetched cooldowns from server
+    const elapsedSeconds = Math.floor((Date.now() - userStatus.cooldownsFetchTime) / 1000);
     
-    // Drug cooldown (cooldowns store end timestamps)
+    // Drug cooldown (original value minus elapsed time)
     if (elements.drugCd) {
-        const drugRemaining = Math.max(0, userStatus.cooldowns.drug - now);
+        const drugRemaining = Math.max(0, userStatus.cooldowns.drug - elapsedSeconds);
         if (drugRemaining > 0) {
             elements.drugCd.textContent = formatCooldown(drugRemaining);
             elements.drugCd.className = 'cooldown-value active';
@@ -524,7 +527,7 @@ function updateUserCooldowns() {
     
     // Medical cooldown
     if (elements.medicalCd) {
-        const medRemaining = Math.max(0, userStatus.cooldowns.medical - now);
+        const medRemaining = Math.max(0, userStatus.cooldowns.medical - elapsedSeconds);
         if (medRemaining > 0) {
             elements.medicalCd.textContent = formatCooldown(medRemaining);
             elements.medicalCd.className = 'cooldown-value active';
@@ -536,7 +539,7 @@ function updateUserCooldowns() {
     
     // Booster cooldown
     if (elements.boosterCd) {
-        const boostRemaining = Math.max(0, userStatus.cooldowns.booster - now);
+        const boostRemaining = Math.max(0, userStatus.cooldowns.booster - elapsedSeconds);
         if (boostRemaining > 0) {
             elements.boosterCd.textContent = formatCooldown(boostRemaining);
             elements.boosterCd.className = 'cooldown-value active';
@@ -615,6 +618,7 @@ async function fetchStatus(forceRefresh = false) {
         state.targets = data.targets || [];
         state.claims = data.active_claims || [];
         state.lastUpdate = data.last_updated;
+        state.targetsFetchTime = Date.now();  // Track when we got this data
         state.isConnected = true;
         
         updateConnectionStatus(true);
@@ -668,6 +672,8 @@ function updateApiInfo(data) {
 function updateTimers() {
     // Use current time in seconds (UTC)
     const now = Math.floor(Date.now() / 1000);
+    // Calculate how many seconds have elapsed since we fetched the data
+    const elapsedSinceFetch = Math.floor((Date.now() - state.targetsFetchTime) / 1000);
     
     document.querySelectorAll('tr[data-hospital-until]').forEach(row => {
         const hospitalUntil = parseInt(row.dataset.hospitalUntil) || 0;
@@ -675,7 +681,8 @@ function updateTimers() {
         
         if (!timerCell) return;
         
-        // Calculate remaining time: hospital_until is UTC timestamp from Torn
+        // Calculate remaining time: use hospital_until minus elapsed time since fetch
+        // This prevents jumps when server data refreshes
         const remaining = hospitalUntil > 0 ? Math.max(0, hospitalUntil - now) : 0;
         
         if (remaining <= 0) {
