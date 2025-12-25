@@ -40,8 +40,6 @@ let state = {
     // Prevent concurrent fetches
     isFetching: false,
     fetchRequestId: 0,
-    // Local claim cache - single source of truth for claims
-    localClaims: {},  // { targetId: { claimed_by, claimed_by_id, claimed_at } }
 };
 
 // DOM Elements
@@ -592,79 +590,8 @@ async function fetchStatus(forceRefresh = false) {
             state.maxClaimsPerUser = data.max_claims_per_user;
         }
         
-        const serverTargets = data.targets || [];
-        
-        // Update local claims cache from server data (server is authoritative)
-        // But merge intelligently to prevent flickering
-        const serverClaims = {};
-        for (const target of serverTargets) {
-            if (target.claimed_by) {
-                serverClaims[target.user_id] = {
-                    claimed_by: target.claimed_by,
-                    claimed_by_id: target.claimed_by_id,
-                    claimed_at: target.claimed_at
-                };
-            }
-        }
-        
-        // Merge: server is authoritative, but keep THIS user's recent pending claims
-        // that the server hasn't acknowledged yet
-        const now = Date.now();
-        const myUserId = parseInt(state.userId) || 0;
-        
-        // First, process all existing local claims
-        for (const targetId in state.localClaims) {
-            const local = state.localClaims[targetId];
-            const server = serverClaims[targetId];
-            
-            // Is this MY pending claim that server hasn't seen yet?
-            const isMyPendingClaim = local._pending && 
-                                    local.claimed_by_id === myUserId && 
-                                    (now - local._pendingTime < 5000);
-            
-            if (server) {
-                // Server has a claim for this target
-                if (isMyPendingClaim && server.claimed_by_id !== myUserId) {
-                    // Someone else claimed it while my claim was pending
-                    // Server wins - use their claim
-                    state.localClaims[targetId] = server;
-                } else {
-                    // Use server data (could be my confirmed claim or someone else's)
-                    state.localClaims[targetId] = server;
-                }
-            } else {
-                // Server says no claim on this target
-                if (isMyPendingClaim) {
-                    // Keep my recent pending claim until server confirms
-                } else {
-                    // No server claim and not my pending - remove
-                    delete state.localClaims[targetId];
-                }
-            }
-        }
-        
-        // Add any new claims from server (other users' claims we didn't know about)
-        for (const targetId in serverClaims) {
-            if (!state.localClaims[targetId]) {
-                state.localClaims[targetId] = serverClaims[targetId];
-            }
-        }
-        
-        // Apply local claims to targets for rendering
-        for (const target of serverTargets) {
-            const localClaim = state.localClaims[target.user_id];
-            if (localClaim) {
-                target.claimed_by = localClaim.claimed_by;
-                target.claimed_by_id = localClaim.claimed_by_id;
-                target.claimed_at = localClaim.claimed_at;
-            } else {
-                target.claimed_by = null;
-                target.claimed_by_id = null;
-                target.claimed_at = null;
-            }
-        }
-        
-        state.targets = serverTargets;
+        // Use server data directly - server is the single source of truth
+        state.targets = data.targets || [];
         state.claims = data.active_claims || [];
         state.lastUpdate = data.last_updated;
         state.isConnected = true;
@@ -998,23 +925,6 @@ async function handleClaim(targetId) {
     
     const tid = parseInt(targetId);
     
-    // Add to local claims cache immediately (optimistic update)
-    state.localClaims[tid] = {
-        claimed_by: state.userName,
-        claimed_by_id: parseInt(state.userId),
-        claimed_at: Math.floor(Date.now() / 1000),
-        _pending: true,
-        _pendingTime: Date.now()
-    };
-    
-    // Update target in state and re-render
-    const target = state.targets.find(t => t.user_id === tid);
-    if (target) {
-        target.claimed_by = state.userName;
-        target.claimed_by_id = parseInt(state.userId);
-    }
-    renderTargets();
-    
     try {
         const response = await fetch(`${CONFIG.API_BASE}/claim`, {
             method: 'POST',
@@ -1032,25 +942,16 @@ async function handleClaim(targetId) {
         const data = await response.json();
         
         if (data.success) {
-            // Mark as confirmed (remove pending flag)
-            if (state.localClaims[tid]) {
-                delete state.localClaims[tid]._pending;
-                delete state.localClaims[tid]._pendingTime;
-            }
             showToast(data.message, 'success');
         } else {
-            // Remove from local cache on failure
-            delete state.localClaims[tid];
             showToast(data.message || 'Failed to claim target', 'error');
         }
     } catch (error) {
         console.error('Claim error:', error);
-        // Remove from local cache on error
-        delete state.localClaims[tid];
         showToast('Network error claiming target', 'error');
     }
     
-    // Always refresh to sync with server
+    // Refresh to get latest server data
     fetchStatus(true);
 }
 
@@ -1058,17 +959,6 @@ async function handleUnclaim(targetId) {
     if (!state.userId) return;
     
     const tid = parseInt(targetId);
-    
-    // Remove from local claims cache immediately
-    delete state.localClaims[tid];
-    
-    // Update target in state and re-render
-    const target = state.targets.find(t => t.user_id === tid);
-    if (target) {
-        target.claimed_by = null;
-        target.claimed_by_id = null;
-    }
-    renderTargets();
     
     try {
         const response = await fetch(
@@ -1091,7 +981,7 @@ async function handleUnclaim(targetId) {
         showToast('Network error releasing claim', 'error');
     }
     
-    // Always refresh to sync with server
+    // Refresh to get latest server data
     fetchStatus(true);
 }
 
