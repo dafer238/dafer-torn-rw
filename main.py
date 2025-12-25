@@ -282,15 +282,15 @@ async def get_my_status(x_api_key: str = Header(None)):
                     "key": x_api_key,
                 },
             )
-            
+
             user_response, faction_response = await asyncio.gather(
                 user_task, faction_task, return_exceptions=True
             )
-            
+
             # Process user data
             if isinstance(user_response, Exception):
                 raise HTTPException(status_code=502, detail="Failed to fetch user data")
-            
+
             data = user_response.json()
 
             if "error" in data:
@@ -339,7 +339,7 @@ async def get_my_status(x_api_key: str = Header(None)):
             status = data.get("status", {})
             status_state = status.get("state", "Okay")
             status_until = status.get("until", 0)
-            
+
             # Chain data
             chain_data = {"current": 0, "timeout": 0, "max": 0, "modifier": 1}
             if not isinstance(faction_response, Exception):
@@ -408,7 +408,7 @@ async def claim_target(request: ClaimRequest):
     """
     # Invalidate claims cache so next status fetch gets fresh data
     claims_cache["data"] = None
-    
+
     # Get target name from current status if available
     target_name = f"Player {request.target_id}"
 
@@ -440,7 +440,7 @@ async def unclaim_target(
     """Release a claim on a target."""
     # Invalidate claims cache
     claims_cache["data"] = None
-    
+
     claim_mgr = get_claim_manager()
     success, message = claim_mgr.unclaim(target_id, claimer_id)
 
