@@ -22,40 +22,76 @@
 
       <!-- User Status Bar -->
       <div class="user-status-bar" id="user-status-bar">
-        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical" target="_blank" class="user-status-item clickable-stat" title="Go to Faction Medical">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical"
+          target="_blank"
+          class="user-status-item clickable-stat"
+          title="Go to Faction Medical"
+        >
           <span class="user-status-label">❤️ HP</span>
           <div class="bar-container health-bar">
             <div class="bar-fill" id="health-fill"></div>
             <span class="bar-text" id="health-text">--/--</span>
           </div>
         </a>
-        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs" target="_blank" class="user-status-item clickable-stat" title="Go to Faction Drugs">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs"
+          target="_blank"
+          class="user-status-item clickable-stat"
+          title="Go to Faction Drugs"
+        >
           <span class="user-status-label">⚡ E</span>
           <div class="bar-container energy-bar">
             <div class="bar-fill" id="energy-fill"></div>
             <span class="bar-text" id="energy-text">--/--</span>
           </div>
         </a>
-        <a href="https://www.torn.com/crimes.php" target="_blank" class="user-status-item clickable-stat" title="Go to Crimes">
+        <a
+          href="https://www.torn.com/crimes.php"
+          target="_blank"
+          class="user-status-item clickable-stat"
+          title="Go to Crimes"
+        >
           <span class="user-status-label">💢 N</span>
           <div class="bar-container nerve-bar">
             <div class="bar-fill" id="nerve-fill"></div>
             <span class="bar-text" id="nerve-text">--/--</span>
           </div>
         </a>
-        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Drugs">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs"
+          target="_blank"
+          class="user-status-item cooldown-item clickable-stat"
+          title="Go to Faction Drugs"
+        >
           <span class="cooldown-label">💊 Drug</span>
           <span class="cooldown-value" id="drug-cd">--:--</span>
         </a>
-        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Medical">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical"
+          target="_blank"
+          class="user-status-item cooldown-item clickable-stat"
+          title="Go to Faction Medical"
+        >
           <span class="cooldown-label">🏥 Med</span>
           <span class="cooldown-value" id="medical-cd">--:--</span>
         </a>
-        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=boosters" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Boosters">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=boosters"
+          target="_blank"
+          class="user-status-item cooldown-item clickable-stat"
+          title="Go to Faction Boosters"
+        >
           <span class="cooldown-label">💉 Boost</span>
           <span class="cooldown-value" id="booster-cd">--:--</span>
         </a>
-        <a href="https://www.torn.com/factions.php?step=your#/war/chain" target="_blank" class="user-status-item chain-item clickable-stat" id="chain-item" title="Go to Faction Chain">
+        <a
+          href="https://www.torn.com/factions.php?step=your#/war/chain"
+          target="_blank"
+          class="user-status-item chain-item clickable-stat"
+          id="chain-item"
+          title="Go to Faction Chain"
+        >
           <span class="chain-label">⛓️ Chain</span>
           <span class="chain-count" id="chain-count">0</span>
           <span class="chain-timer" id="chain-timer">--:--</span>
@@ -69,7 +105,9 @@
       <div class="chain-alert-overlay" id="chain-alert-overlay">
         <div class="chain-alert-content">
           <span class="chain-alert-emoji">🔥</span>
-          <span class="chain-alert-text" id="chain-alert-text">CHAIN BONUS IN 10 HITS!</span>
+          <span class="chain-alert-text" id="chain-alert-text"
+            >CHAIN BONUS IN 10 HITS!</span
+          >
           <span class="chain-alert-count" id="chain-alert-count">990/1000</span>
         </div>
       </div>
@@ -212,13 +250,27 @@
             </button>
           </div>
         </div>
-        
+
         <div class="range-filters">
           <div class="range-filter">
             <span class="filter-label">Level:</span>
-            <input type="number" id="level-min" class="range-input" placeholder="Min" min="1" max="100" />
+            <input
+              type="number"
+              id="level-min"
+              class="range-input"
+              placeholder="Min"
+              min="1"
+              max="100"
+            />
             <span class="range-separator">-</span>
-            <input type="number" id="level-max" class="range-input" placeholder="Max" min="1" max="100" />
+            <input
+              type="number"
+              id="level-max"
+              class="range-input"
+              placeholder="Max"
+              min="1"
+              max="100"
+            />
           </div>
           <div class="range-filter">
             <span class="filter-label">Stats:</span>
@@ -261,10 +313,12 @@
             </select>
           </div>
         </div>
-        
+
         <div class="action-controls">
           <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
-          <button id="toggle-config" class="btn btn-secondary">⚙️ Settings</button>
+          <button id="toggle-config" class="btn btn-secondary">
+            ⚙️ Settings
+          </button>
         </div>
       </div>
 
@@ -289,7 +343,11 @@
           <span class="stat-value" id="traveling-count">0</span>
           <span class="stat-label">Traveling</span>
         </div>
-        <div class="stat clickable" id="my-claims-stat" data-stat-filter="myclaims">
+        <div
+          class="stat clickable"
+          id="my-claims-stat"
+          data-stat-filter="myclaims"
+        >
           <span class="stat-value" id="my-claims-count">0</span>
           <span class="stat-label">My Claims</span>
         </div>
