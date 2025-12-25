@@ -164,6 +164,9 @@ function applyStatFilter(filter) {
         case 'claimed':
             state.filters.claim = 'claimed';
             break;
+        case 'myclaims':
+            state.filters.claim = 'myclaims';
+            break;
         case 'traveling':
             state.filters.travel = 'traveling';
             break;
@@ -351,6 +354,7 @@ function filterTargets(targets) {
         // Claim filter
         if (state.filters.claim === 'unclaimed' && t.claimed_by) return false;
         if (state.filters.claim === 'claimed' && !t.claimed_by) return false;
+        if (state.filters.claim === 'myclaims' && t.claimed_by_id !== parseInt(state.userId)) return false;
         
         // Online filter
         if (state.filters.online === 'online' && t.estimated_online !== 'online') return false;
@@ -391,6 +395,17 @@ function sortTargets(targets) {
             case 'online':
                 const onlineOrder = { online: 0, idle: 1, offline: 2, unknown: 3 };
                 cmp = (onlineOrder[a.estimated_online] || 3) - (onlineOrder[b.estimated_online] || 3);
+                break;
+            case 'claimed':
+                // Sort by: my claims first, then other claims, then unclaimed
+                const aClaimOrder = a.claimed_by_id === parseInt(state.userId) ? 0 : (a.claimed_by ? 1 : 2);
+                const bClaimOrder = b.claimed_by_id === parseInt(state.userId) ? 0 : (b.claimed_by ? 1 : 2);
+                if (aClaimOrder !== bClaimOrder) {
+                    cmp = aClaimOrder - bClaimOrder;
+                } else {
+                    // Within same claim status, sort by claimer name
+                    cmp = (a.claimed_by || '').localeCompare(b.claimed_by || '');
+                }
                 break;
         }
         

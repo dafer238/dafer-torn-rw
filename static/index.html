@@ -185,7 +185,7 @@
           <span class="stat-value" id="traveling-count">0</span>
           <span class="stat-label">Traveling</span>
         </div>
-        <div class="stat" id="my-claims-stat">
+        <div class="stat clickable" id="my-claims-stat" data-stat-filter="myclaims">
           <span class="stat-value" id="my-claims-count">0</span>
           <span class="stat-label">My Claims</span>
         </div>
@@ -208,7 +208,9 @@
                 Status <span class="sort-icon"></span>
               </th>
               <th>Reason</th>
-              <th>Claimed</th>
+              <th class="sortable" data-sort="claimed">
+                Claimed <span class="sort-icon"></span>
+              </th>
               <th>Action</th>
             </tr>
           </thead>
