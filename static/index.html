@@ -24,7 +24,7 @@
         <h3>Configuration</h3>
         <div class="config-form">
           <div class="form-group">
-            <label for="api-key">Your API Key (Public):</label>
+            <label for="api-key">Your API Key (Limited):</label>
             <input
               type="password"
               id="api-key"
@@ -158,9 +158,47 @@
             </button>
           </div>
         </div>
+        
+        <div class="range-filters">
+          <div class="range-filter">
+            <span class="filter-label">Level:</span>
+            <input type="number" id="level-min" class="range-input" placeholder="Min" min="1" max="100" />
+            <span class="range-separator">-</span>
+            <input type="number" id="level-max" class="range-input" placeholder="Max" min="1" max="100" />
+          </div>
+          <div class="range-filter">
+            <span class="filter-label">Stats:</span>
+            <select id="stats-min" class="range-select">
+              <option value="0">Min</option>
+              <option value="10000000">10M+</option>
+              <option value="50000000">50M+</option>
+              <option value="100000000">100M+</option>
+              <option value="250000000">250M+</option>
+              <option value="500000000">500M+</option>
+              <option value="1000000000">1B+</option>
+              <option value="2000000000">2B+</option>
+              <option value="5000000000">5B+</option>
+              <option value="10000000000">10B+</option>
+            </select>
+            <span class="range-separator">-</span>
+            <select id="stats-max" class="range-select">
+              <option value="999999999999">Max</option>
+              <option value="10000000">10M</option>
+              <option value="50000000">50M</option>
+              <option value="100000000">100M</option>
+              <option value="250000000">250M</option>
+              <option value="500000000">500M</option>
+              <option value="1000000000">1B</option>
+              <option value="2000000000">2B</option>
+              <option value="5000000000">5B</option>
+              <option value="10000000000">10B</option>
+            </select>
+          </div>
+        </div>
+        
         <div class="action-controls">
-          <button id="refresh-btn" class="btn btn-secondary">🔄</button>
-          <button id="toggle-config" class="btn btn-secondary">⚙️</button>
+          <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
+          <button id="toggle-config" class="btn btn-secondary">⚙️ Settings</button>
         </div>
       </div>
 
@@ -204,6 +242,9 @@
               <th class="sortable" data-sort="level">
                 Lvl <span class="sort-icon"></span>
               </th>
+              <th class="sortable" data-sort="stats">
+                Stats <span class="sort-icon"></span>
+              </th>
               <th class="sortable" data-sort="online">
                 Status <span class="sort-icon"></span>
               </th>
@@ -216,7 +257,7 @@
           </thead>
           <tbody id="target-list">
             <tr>
-              <td colspan="7" class="loading">Loading targets...</td>
+              <td colspan="8" class="loading">Loading targets...</td>
             </tr>
           </tbody>
         </table>

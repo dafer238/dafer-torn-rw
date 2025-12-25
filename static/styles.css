@@ -262,6 +262,99 @@ header h1 {
     color: white;
 }
 
+/* Range Filters */
+.range-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    width: 100%;
+}
+
+.range-filter {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.range-input {
+    width: 55px;
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-radius: 3px;
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.range-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.range-select {
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-radius: 3px;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.range-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.range-separator {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.btn-small {
+    padding: 3px 6px;
+    font-size: 0.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-small:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-small.loading {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* Stats column styling */
+.stats-cell {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.stats-cell.has-stats {
+    color: var(--text-primary);
+}
+
+.stats-cell .stats-value {
+    font-weight: 500;
+}
+
+.stats-cell .stats-age {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
 .action-controls {
     display: flex;
     gap: 6px;

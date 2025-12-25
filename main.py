@@ -5,12 +5,14 @@ Provides REST API endpoints for:
 - War status and target tracking
 - Hit claiming/unclaiming
 - Health/status checks
+- TornStats integration for battle stats
 """
 
 import os
 import time
 from contextlib import asynccontextmanager
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -126,6 +128,16 @@ async def health_check():
         "timestamp": int(time.time()),
         "rate_limit_remaining": rate_limiter.requests_remaining(),
         "cache_stats": hospital_cache.stats(),
+    }
+
+
+@app.get("/api/config")
+async def get_config():
+    """Get public configuration values."""
+    return {
+        "enemy_faction_ids": get_enemy_faction_ids(),
+        "max_claims_per_user": get_max_claims_per_user(),
+        "claim_expiry": get_claim_expiry(),
     }
 
 
@@ -309,6 +321,193 @@ async def get_stats():
         "claims": claim_mgr.stats(),
         "timestamp": int(time.time()),
     }
+
+
+# TornStats cache (in-memory, keyed by faction ID) - DISABLED, using estimation instead
+# tornstats_cache: dict[int, dict] = {}
+# tornstats_cache_time: dict[int, float] = {}
+# TORNSTATS_CACHE_TTL = 300  # 5 minutes - stats don't change often
+
+
+def estimate_battle_stats(
+    level: int,
+    age_days: int = 0,
+    xanax: int = 0,
+    refills: int = 0,
+    stat_enhancers: int = 0,
+    cans: int = 0,
+) -> int:
+    """
+    Estimate total battle stats based on publicly available information.
+    This is a simplified version of YATA's estimation algorithm.
+
+    Factors considered:
+    - Level: Higher level = more stats
+    - Age: Older accounts have had more time to train
+    - Xanax: Energy boost for training
+    - Refills: Energy refills for training
+    - Stat enhancers: Direct stat boosts
+    - Cans: Additional energy
+    """
+    # Base stats from level (rough approximation)
+    # Level 100 players typically have between 100M - 10B+ stats
+    # This is a very rough estimate
+
+    if level <= 0:
+        return 0
+
+    # Base calculation from level
+    # Exponential growth: stats roughly double every 10 levels above 50
+    if level < 15:
+        base = level * 50_000  # ~750k at level 15
+    elif level < 30:
+        base = 750_000 + (level - 15) * 200_000  # ~3.75M at level 30
+    elif level < 50:
+        base = 3_750_000 + (level - 30) * 500_000  # ~13.75M at level 50
+    elif level < 75:
+        base = 13_750_000 + (level - 50) * 2_000_000  # ~63.75M at level 75
+    else:
+        base = 63_750_000 + (level - 75) * 10_000_000  # ~313M+ at level 100
+
+    # Adjustments based on other factors
+    # Each xanax = roughly 250 energy = ~2.5M potential stat gain over time
+    xanax_bonus = xanax * 100_000 if xanax else 0
+
+    # Each refill = 150 energy = ~1.5M potential stat gain
+    refill_bonus = refills * 75_000 if refills else 0
+
+    # Stat enhancers provide direct boosts
+    enhancer_bonus = stat_enhancers * 50_000 if stat_enhancers else 0
+
+    # Cans = energy drinks
+    cans_bonus = cans * 25_000 if cans else 0
+
+    total = base + xanax_bonus + refill_bonus + enhancer_bonus + cans_bonus
+
+    return int(total)
+
+
+def format_estimated_stats(total: int) -> str:
+    """Format stats for display."""
+    if total <= 0:
+        return "?"
+    if total >= 1_000_000_000_000:
+        return f"{total / 1_000_000_000_000:.1f}T"
+    if total >= 1_000_000_000:
+        return f"{total / 1_000_000_000:.1f}B"
+    if total >= 1_000_000:
+        return f"{total / 1_000_000:.1f}M"
+    if total >= 1_000:
+        return f"{total / 1_000:.1f}K"
+    return str(total)
+
+
+@app.get("/api/tornstats/{faction_id}")
+async def get_tornstats(
+    faction_id: int,
+    x_api_key: str = Header(None, alias="X-API-Key", description="User's Torn API key"),
+):
+    """
+    Get estimated battle stats from TornStats for a faction.
+    Uses your Torn API key (same one you use on TornStats website).
+    Fetches from your faction's shared spy database.
+    Results are cached for 5 minutes.
+    """
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key required")
+
+    now = time.time()
+
+    # Check cache
+    if faction_id in tornstats_cache:
+        cache_age = now - tornstats_cache_time.get(faction_id, 0)
+        if cache_age < TORNSTATS_CACHE_TTL:
+            return {"stats": tornstats_cache[faction_id], "cached": True, "cache_age": cache_age}
+
+    # Fetch from TornStats spies endpoint (your faction's shared spy database)
+    # This endpoint returns all spies your faction has shared
+    url = f"https://www.tornstats.com/api/v2/{x_api_key}/spies"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url)
+
+            print(f"TornStats spies response status: {response.status_code}")
+
+            raw_data = response.json()
+            print(
+                f"TornStats spies response keys: {raw_data.keys() if isinstance(raw_data, dict) else 'not a dict'}"
+            )
+
+            if response.status_code == 401:
+                raise HTTPException(status_code=401, detail="Invalid API key for TornStats")
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"TornStats API error: {response.status_code}",
+                )
+
+            # Check for TornStats errors
+            if raw_data.get("status") == False:
+                error_msg = raw_data.get("message", "Unknown TornStats error")
+                raise HTTPException(status_code=400, detail=error_msg)
+
+            # TornStats spies endpoint returns: {"status": true, "spies": [...]}
+            spies_list = raw_data.get("spies", [])
+
+            print(f"TornStats found {len(spies_list)} spies in database")
+
+            # Debug: Print first spy to see structure
+            if spies_list:
+                print(f"Sample spy data: {spies_list[0]}")
+
+            # Transform to dict keyed by player_id
+            stats_by_id = {}
+            for spy in spies_list:
+                try:
+                    # TornStats format: player_id is a string
+                    player_id = spy.get("player_id") or spy.get("playerId")
+                    if not player_id:
+                        continue
+
+                    user_id = int(player_id)
+
+                    stats_by_id[user_id] = {
+                        "total": spy.get("total", 0) or 0,
+                        "strength": spy.get("strength", 0) or 0,
+                        "speed": spy.get("speed", 0) or 0,
+                        "dexterity": spy.get("dexterity", 0) or 0,
+                        "defense": spy.get("defense", 0) or 0,
+                        "timestamp": spy.get("timestamp", 0) or 0,
+                        "name": spy.get("player_name") or spy.get("playerName") or "",
+                    }
+                except (ValueError, TypeError) as e:
+                    print(f"Error parsing spy: {e}")
+                    continue
+
+            # Count how many have non-zero stats
+            non_zero = sum(1 for s in stats_by_id.values() if s.get("total", 0) > 0)
+            print(f"Spies with stats: {non_zero}/{len(stats_by_id)}")
+
+            # Cache the result
+            tornstats_cache[faction_id] = stats_by_id
+            tornstats_cache_time[faction_id] = now
+
+            return {
+                "stats": stats_by_id,
+                "cached": False,
+                "cache_age": 0,
+                "total_spies": len(stats_by_id),
+            }
+
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="TornStats request timed out")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"TornStats connection error: {str(e)}")
+    except Exception as e:
+        print(f"TornStats unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing TornStats data: {str(e)}")
 
 
 # Serve static frontend files

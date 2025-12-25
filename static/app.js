@@ -26,7 +26,11 @@ let state = {
         hospital: 'all',
         claim: 'all',
         online: 'all',
-        travel: 'all'
+        travel: 'all',
+        levelMin: null,
+        levelMax: null,
+        statsMin: 0,
+        statsMax: 999999999999
     },
     sortBy: 'timer',
     sortDir: 'asc',
@@ -64,6 +68,10 @@ function cacheElements() {
     elements.apiKey = document.getElementById('api-key');
     elements.toastContainer = document.getElementById('toast-container');
     elements.targetTable = document.getElementById('target-table');
+    elements.levelMin = document.getElementById('level-min');
+    elements.levelMax = document.getElementById('level-max');
+    elements.statsMin = document.getElementById('stats-min');
+    elements.statsMax = document.getElementById('stats-max');
 }
 
 function loadConfig() {
@@ -129,6 +137,24 @@ function setupEventListeners() {
             const filter = e.currentTarget.dataset.statFilter;
             applyStatFilter(filter);
         });
+    });
+    
+    // Range filter inputs
+    elements.levelMin.addEventListener('change', () => {
+        state.filters.levelMin = elements.levelMin.value ? parseInt(elements.levelMin.value) : null;
+        renderTargets();
+    });
+    elements.levelMax.addEventListener('change', () => {
+        state.filters.levelMax = elements.levelMax.value ? parseInt(elements.levelMax.value) : null;
+        renderTargets();
+    });
+    elements.statsMin.addEventListener('change', () => {
+        state.filters.statsMin = parseInt(elements.statsMin.value) || 0;
+        renderTargets();
+    });
+    elements.statsMax.addEventListener('change', () => {
+        state.filters.statsMax = parseInt(elements.statsMax.value) || 999999999999;
+        renderTargets();
     });
     
     // Sortable headers
@@ -345,6 +371,15 @@ function formatTime(seconds) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatStats(total) {
+    if (!total || total <= 0) return '-';
+    if (total >= 1e12) return (total / 1e12).toFixed(1) + 'T';
+    if (total >= 1e9) return (total / 1e9).toFixed(1) + 'B';
+    if (total >= 1e6) return (total / 1e6).toFixed(1) + 'M';
+    if (total >= 1e3) return (total / 1e3).toFixed(1) + 'K';
+    return total.toString();
+}
+
 function filterTargets(targets) {
     return targets.filter(t => {
         // Hospital filter
@@ -363,6 +398,15 @@ function filterTargets(targets) {
         // Travel filter
         if (state.filters.travel === 'local' && t.traveling) return false;
         if (state.filters.travel === 'traveling' && !t.traveling) return false;
+        
+        // Level range filter
+        if (state.filters.levelMin !== null && t.level < state.filters.levelMin) return false;
+        if (state.filters.levelMax !== null && t.level > state.filters.levelMax) return false;
+        
+        // Battle stats filter (using estimated stats)
+        const totalStats = t.estimated_stats || 0;
+        if (totalStats < state.filters.statsMin) return false;
+        if (totalStats > state.filters.statsMax) return false;
         
         return true;
     });
@@ -391,6 +435,11 @@ function sortTargets(targets) {
                 break;
             case 'level':
                 cmp = a.level - b.level;
+                break;
+            case 'stats':
+                const aStats = a.estimated_stats || 0;
+                const bStats = b.estimated_stats || 0;
+                cmp = aStats - bStats;
                 break;
             case 'online':
                 const onlineOrder = { online: 0, idle: 1, offline: 2, unknown: 3 };
@@ -421,7 +470,7 @@ function renderTargets() {
     
     if (targets.length === 0) {
         elements.targetList.innerHTML = `
-            <tr><td colspan="7" class="loading">
+            <tr><td colspan="8" class="loading">
                 ${state.targets.length === 0 
                     ? 'No targets loaded. Check API configuration.' 
                     : 'No targets match the current filters.'}
@@ -477,6 +526,12 @@ function renderTargetRow(target) {
     const onlineClass = target.estimated_online || 'unknown';
     const onlineText = { online: 'Online', idle: 'Idle', offline: 'Offline', unknown: '?' }[onlineClass];
     
+    // Battle stats (estimated based on level)
+    const hasStats = target.estimated_stats && target.estimated_stats > 0;
+    const statsHtml = hasStats 
+        ? `<span class="stats-value" title="Estimated based on level">${target.estimated_stats_formatted}</span>`
+        : '<span class="stats-value">-</span>';
+    
     // Badges
     let badges = '';
     if (target.medding) badges += '<span class="badge medding">MED</span>';
@@ -518,6 +573,7 @@ function renderTargetRow(target) {
                 </div>
             </td>
             <td>${target.level}</td>
+            <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsHtml}</td>
             <td class="online-cell">
                 <span class="online-dot ${onlineClass}"></span>
                 <span class="online-text">${onlineText}</span>

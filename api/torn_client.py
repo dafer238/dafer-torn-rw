@@ -17,6 +17,45 @@ from .cache import hospital_cache, player_cache, faction_cache, rate_limiter
 TORN_API_BASE = "https://api.torn.com"
 
 
+def estimate_battle_stats(level: int) -> tuple[int, str]:
+    """
+    Estimate total battle stats based on level.
+    Returns (estimated_total, formatted_string).
+
+    This is a simplified version of YATA's estimation algorithm.
+    Higher level = more stats (exponential growth).
+    """
+    if level <= 0:
+        return 0, "?"
+
+    # Base calculation from level
+    # Exponential growth: stats roughly double every 10 levels above 50
+    if level < 15:
+        base = level * 50_000  # ~750k at level 15
+    elif level < 30:
+        base = 750_000 + (level - 15) * 200_000  # ~3.75M at level 30
+    elif level < 50:
+        base = 3_750_000 + (level - 30) * 500_000  # ~13.75M at level 50
+    elif level < 75:
+        base = 13_750_000 + (level - 50) * 2_000_000  # ~63.75M at level 75
+    else:
+        base = 63_750_000 + (level - 75) * 10_000_000  # ~313M+ at level 100
+
+    total = int(base)
+
+    # Format for display
+    if total >= 1_000_000_000:
+        formatted = f"{total / 1_000_000_000:.1f}B"
+    elif total >= 1_000_000:
+        formatted = f"{total / 1_000_000:.0f}M"
+    elif total >= 1_000:
+        formatted = f"{total / 1_000:.0f}K"
+    else:
+        formatted = str(total)
+
+    return total, formatted
+
+
 class TornAPIError(Exception):
     """Custom exception for Torn API errors."""
 
@@ -199,23 +238,13 @@ class TornClient:
 
         results = []
 
-        # Torn's API 'until' timestamp is offset by exactly 1 hour from the actual release time.
-        # This is NOT a timezone issue - Unix timestamps are timezone-independent.
-        # Both Python's time.time() and JS Date.now() return UTC seconds/ms since epoch.
-        # This offset appears to be a quirk in how Torn stores/returns hospital release times.
-        # The correction aligns our timer with Torn's displayed "In hospital for X" text.
-        TORN_TIMESTAMP_OFFSET = 3600  # 1 hour in seconds
-
         for user_id_str, member_data in members.items():
             user_id = int(user_id_str)
 
             # Parse member data into PlayerStatus
             status = member_data.get("status", {})
             status_state = status.get("state", "")
-            hospital_until_raw = status.get("until", 0)
-
-            # Apply offset correction to hospital_until
-            hospital_until = hospital_until_raw - TORN_TIMESTAMP_OFFSET if hospital_until_raw else 0
+            hospital_until = status.get("until", 0) or 0
 
             hospital_remaining = max(0, hospital_until - now) if hospital_until else 0
 
@@ -246,10 +275,14 @@ class TornClient:
             # Check for medding (player left hospital early)
             medding = self._detect_medding(user_id, hospital_until)
 
+            # Estimate battle stats from level
+            level = member_data.get("level", 0)
+            est_stats, est_stats_fmt = estimate_battle_stats(level)
+
             player = PlayerStatus(
                 user_id=user_id,
                 name=member_data.get("name", "Unknown"),
-                level=member_data.get("level", 0),
+                level=level,
                 hospital_until=hospital_until
                 if hospital_until and hosp_status != HospitalStatus.OUT
                 else None,
@@ -265,6 +298,8 @@ class TornClient:
                 last_action_relative=last_action_relative,
                 estimated_online=online_status,
                 medding=medding,
+                estimated_stats=est_stats,
+                estimated_stats_formatted=est_stats_fmt,
                 last_updated=now,
             )
 
@@ -276,14 +311,8 @@ class TornClient:
         """Parse raw API response into PlayerStatus model."""
         now = int(time.time())
 
-        # Torn's 'until' timestamp appears to be offset by 1 hour from actual release time
-        TORN_TIMESTAMP_OFFSET = 3600  # 1 hour in seconds
-
         status = data.get("status", {})
-        hospital_until_raw = status.get("until", 0)
-
-        # Apply offset correction
-        hospital_until = hospital_until_raw - TORN_TIMESTAMP_OFFSET if hospital_until_raw else 0
+        hospital_until = status.get("until", 0) or 0
 
         hospital_remaining = max(0, hospital_until - now) if hospital_until else 0
 

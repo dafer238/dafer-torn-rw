@@ -23,8 +23,5 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ],
-  "env": {
-    "ENEMY_FACTION_IDS": "@enemy_faction_ids"
-  }
+  ]
 }

@@ -57,6 +57,10 @@ class PlayerStatus(BaseModel):
     medding: bool = False  # True if suspected medding out
     previous_hospital_until: Optional[int] = None  # For med detection
 
+    # Estimated battle stats (based on level)
+    estimated_stats: int = 0  # Estimated total battle stats
+    estimated_stats_formatted: str = ""  # Human readable (e.g., "150M")
+
     # Claim info (from our system, not Torn)
     claimed_by: Optional[str] = None  # Username who claimed
     claimed_by_id: Optional[int] = None  # User ID who claimed
