@@ -22,41 +22,55 @@
 
       <!-- User Status Bar -->
       <div class="user-status-bar" id="user-status-bar">
-        <div class="user-status-item">
+        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical" target="_blank" class="user-status-item clickable-stat" title="Go to Faction Medical">
           <span class="user-status-label">❤️ HP</span>
           <div class="bar-container health-bar">
             <div class="bar-fill" id="health-fill"></div>
             <span class="bar-text" id="health-text">--/--</span>
           </div>
-        </div>
-        <div class="user-status-item">
+        </a>
+        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs" target="_blank" class="user-status-item clickable-stat" title="Go to Faction Drugs">
           <span class="user-status-label">⚡ E</span>
           <div class="bar-container energy-bar">
             <div class="bar-fill" id="energy-fill"></div>
             <span class="bar-text" id="energy-text">--/--</span>
           </div>
-        </div>
-        <div class="user-status-item">
+        </a>
+        <a href="https://www.torn.com/crimes.php" target="_blank" class="user-status-item clickable-stat" title="Go to Crimes">
           <span class="user-status-label">💢 N</span>
           <div class="bar-container nerve-bar">
             <div class="bar-fill" id="nerve-fill"></div>
             <span class="bar-text" id="nerve-text">--/--</span>
           </div>
-        </div>
-        <div class="user-status-item cooldown-item">
+        </a>
+        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=drugs" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Drugs">
           <span class="cooldown-label">💊 Drug</span>
           <span class="cooldown-value" id="drug-cd">--:--</span>
-        </div>
-        <div class="user-status-item cooldown-item">
+        </a>
+        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=medical" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Medical">
           <span class="cooldown-label">🏥 Med</span>
           <span class="cooldown-value" id="medical-cd">--:--</span>
-        </div>
-        <div class="user-status-item cooldown-item">
+        </a>
+        <a href="https://www.torn.com/factions.php?step=your#/tab=armoury&start=0&sub=boosters" target="_blank" class="user-status-item cooldown-item clickable-stat" title="Go to Faction Boosters">
           <span class="cooldown-label">💉 Boost</span>
           <span class="cooldown-value" id="booster-cd">--:--</span>
+        </a>
+        <div class="user-status-item chain-item" id="chain-item">
+          <span class="chain-label">⛓️ Chain</span>
+          <span class="chain-count" id="chain-count">0</span>
+          <span class="chain-timer" id="chain-timer">--:--</span>
         </div>
         <div class="user-status-item status-item" id="player-status-item">
           <span class="status-state" id="player-state">--</span>
+        </div>
+      </div>
+
+      <!-- Chain Bonus Alert Overlay -->
+      <div class="chain-alert-overlay" id="chain-alert-overlay">
+        <div class="chain-alert-content">
+          <span class="chain-alert-emoji">🔥</span>
+          <span class="chain-alert-text" id="chain-alert-text">CHAIN BONUS IN 10 HITS!</span>
+          <span class="chain-alert-count" id="chain-alert-count">990/1000</span>
         </div>
       </div>
 

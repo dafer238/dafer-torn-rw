@@ -8,6 +8,7 @@ Provides REST API endpoints for:
 - TornStats integration for battle stats
 """
 
+import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
@@ -245,7 +246,7 @@ async def get_war_status(
 @app.get("/api/me")
 async def get_my_status(x_api_key: str = Header(None)):
     """
-    Get current user's status including health, cooldowns, energy, etc.
+    Get current user's status including health, cooldowns, energy, chain, etc.
     Requires user's API key.
     """
     if not x_api_key:
@@ -253,14 +254,31 @@ async def get_my_status(x_api_key: str = Header(None)):
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
+            # Fetch user data and faction chain in parallel
+            user_task = client.get(
                 "https://api.torn.com/user/",
                 params={
                     "selections": "profile,bars,cooldowns,travel",
                     "key": x_api_key,
                 },
             )
-            data = response.json()
+            faction_task = client.get(
+                "https://api.torn.com/faction/",
+                params={
+                    "selections": "chain",
+                    "key": x_api_key,
+                },
+            )
+            
+            user_response, faction_response = await asyncio.gather(
+                user_task, faction_task, return_exceptions=True
+            )
+            
+            # Process user data
+            if isinstance(user_response, Exception):
+                raise HTTPException(status_code=502, detail="Failed to fetch user data")
+            
+            data = user_response.json()
 
             if "error" in data:
                 error = data["error"]
@@ -308,6 +326,20 @@ async def get_my_status(x_api_key: str = Header(None)):
             status = data.get("status", {})
             status_state = status.get("state", "Okay")
             status_until = status.get("until", 0)
+            
+            # Chain data
+            chain_data = {"current": 0, "timeout": 0, "max": 0, "modifier": 1}
+            if not isinstance(faction_response, Exception):
+                faction_data = faction_response.json()
+                if "chain" in faction_data:
+                    chain = faction_data["chain"]
+                    chain_data = {
+                        "current": chain.get("current", 0),
+                        "timeout": chain.get("timeout", 0),
+                        "max": chain.get("max", 0),
+                        "modifier": chain.get("modifier", 1),
+                        "cooldown": chain.get("cooldown", 0),
+                    }
 
             return {
                 "name": data.get("name", "Unknown"),
@@ -347,6 +379,7 @@ async def get_my_status(x_api_key: str = Header(None)):
                     "state": status_state,
                     "until": status_until,
                 },
+                "chain": chain_data,
                 "timestamp": now,
             }
 

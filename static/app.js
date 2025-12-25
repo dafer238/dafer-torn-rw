@@ -86,6 +86,14 @@ function cacheElements() {
     elements.boosterCd = document.getElementById('booster-cd');
     elements.playerState = document.getElementById('player-state');
     elements.playerStatusItem = document.getElementById('player-status-item');
+    
+    // Chain elements
+    elements.chainItem = document.getElementById('chain-item');
+    elements.chainCount = document.getElementById('chain-count');
+    elements.chainTimer = document.getElementById('chain-timer');
+    elements.chainAlertOverlay = document.getElementById('chain-alert-overlay');
+    elements.chainAlertText = document.getElementById('chain-alert-text');
+    elements.chainAlertCount = document.getElementById('chain-alert-count');
 }
 
 function loadConfig() {
@@ -187,6 +195,14 @@ function setupEventListeners() {
             renderTargets();
         });
     });
+    
+    // Chain alert overlay - click to dismiss temporarily
+    if (elements.chainAlertOverlay) {
+        elements.chainAlertOverlay.addEventListener('click', () => {
+            elements.chainAlertOverlay.classList.remove('visible');
+            // Will show again on next fetch if still close to bonus
+        });
+    }
 }
 
 function applyStatFilter(filter) {
@@ -255,15 +271,34 @@ function startPolling() {
 
 function startTimers() {
     state.timerInterval = setInterval(updateTimers, CONFIG.TIMER_INTERVAL);
-    // Update user cooldown timers every second
-    state.userCooldownInterval = setInterval(updateUserCooldowns, 1000);
+    // Update user cooldown and chain timers every second
+    state.userCooldownInterval = setInterval(() => {
+        updateUserCooldowns();
+        updateChainTimer();
+    }, 1000);
 }
 
 // User status state
 let userStatus = {
     cooldowns: { drug: 0, medical: 0, booster: 0 },
+    chain: { current: 0, timeout: 0, cooldown: 0 },
     lastFetch: 0,
 };
+
+// Chain bonus milestones
+const CHAIN_BONUSES = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
+
+function getNextBonus(current) {
+    for (const bonus of CHAIN_BONUSES) {
+        if (current < bonus) return bonus;
+    }
+    return null;
+}
+
+function getHitsToNextBonus(current) {
+    const next = getNextBonus(current);
+    return next ? next - current : null;
+}
 
 async function fetchUserStatus() {
     if (!state.apiKey) return;
@@ -278,6 +313,7 @@ async function fetchUserStatus() {
         const data = await response.json();
         userStatus.lastFetch = Date.now();
         userStatus.cooldowns = data.cooldowns;
+        userStatus.chain = data.chain || { current: 0, timeout: 0, cooldown: 0 };
         
         // Update health bar
         if (elements.healthFill && elements.healthText) {
@@ -323,11 +359,115 @@ async function fetchUserStatus() {
             elements.playerState.className = `status-state ${stateClass}`;
         }
         
+        // Update chain display
+        updateChainDisplay();
+        
         // Initial cooldown update
         updateUserCooldowns();
         
     } catch (error) {
         console.error('Failed to fetch user status:', error);
+    }
+}
+
+function updateChainDisplay() {
+    const chain = userStatus.chain;
+    const current = chain.current || 0;
+    const timeout = chain.timeout || 0;
+    const cooldown = chain.cooldown || 0;
+    
+    // Update chain count
+    if (elements.chainCount) {
+        elements.chainCount.textContent = current.toLocaleString();
+        
+        const hitsToBonus = getHitsToNextBonus(current);
+        if (hitsToBonus !== null && hitsToBonus <= 10) {
+            elements.chainCount.classList.add('bonus-close');
+        } else {
+            elements.chainCount.classList.remove('bonus-close');
+        }
+    }
+    
+    // Update chain item styling based on state
+    if (elements.chainItem) {
+        elements.chainItem.classList.remove('active', 'warning', 'critical');
+        
+        if (current > 0 && timeout > 0) {
+            elements.chainItem.classList.add('active');
+            
+            // Timer-based warning
+            if (timeout <= 60) {
+                elements.chainItem.classList.add('critical');
+            } else if (timeout <= 120) {
+                elements.chainItem.classList.add('warning');
+            }
+        }
+    }
+    
+    // Check for bonus alert (10 hits away from any bonus)
+    checkChainBonusAlert(current);
+}
+
+function updateChainTimer() {
+    const fetchAge = Math.floor((Date.now() - userStatus.lastFetch) / 1000);
+    const timeout = userStatus.chain.timeout || 0;
+    const remaining = Math.max(0, timeout - fetchAge);
+    const current = userStatus.chain.current || 0;
+    
+    if (elements.chainTimer) {
+        if (current === 0 || timeout === 0) {
+            elements.chainTimer.textContent = '--:--';
+            elements.chainTimer.className = 'chain-timer';
+        } else if (remaining > 0) {
+            elements.chainTimer.textContent = formatCooldown(remaining);
+            elements.chainTimer.className = 'chain-timer';
+            
+            if (remaining <= 60) {
+                elements.chainTimer.classList.add('critical');
+            } else if (remaining <= 120) {
+                elements.chainTimer.classList.add('warning');
+            }
+        } else {
+            elements.chainTimer.textContent = 'EXPIRED';
+            elements.chainTimer.className = 'chain-timer critical';
+        }
+    }
+    
+    // Update chain item styling based on timer
+    if (elements.chainItem && current > 0) {
+        elements.chainItem.classList.remove('warning', 'critical');
+        if (remaining > 0) {
+            elements.chainItem.classList.add('active');
+            if (remaining <= 60) {
+                elements.chainItem.classList.add('critical');
+            } else if (remaining <= 120) {
+                elements.chainItem.classList.add('warning');
+            }
+        }
+    }
+}
+
+function checkChainBonusAlert(current) {
+    const hitsToBonus = getHitsToNextBonus(current);
+    const nextBonus = getNextBonus(current);
+    
+    if (hitsToBonus !== null && hitsToBonus <= 10 && current > 0) {
+        // Show big alert
+        if (elements.chainAlertOverlay) {
+            elements.chainAlertOverlay.classList.add('visible');
+            
+            if (elements.chainAlertText) {
+                elements.chainAlertText.textContent = `CHAIN BONUS IN ${hitsToBonus} HITS!`;
+            }
+            if (elements.chainAlertCount) {
+                elements.chainAlertCount.textContent = `${current.toLocaleString()} / ${nextBonus.toLocaleString()}`;
+            }
+        }
+    } else {
+        // Hide alert
+        if (elements.chainAlertOverlay) {
+            elements.chainAlertOverlay.classList.remove('visible');
+        }
     }
 }
 

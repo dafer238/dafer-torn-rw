@@ -269,6 +269,139 @@ header h1 {
 .status-state.traveling {
     color: var(--traveling-blue);
 }
+
+/* Clickable stat items */
+.clickable-stat {
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.clickable-stat:hover {
+    transform: scale(1.05);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Chain display */
+.chain-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 12px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.chain-item.active {
+    border-color: var(--accent);
+    background: rgba(233, 69, 96, 0.1);
+}
+
+.chain-item.warning {
+    border-color: var(--warning);
+    background: rgba(255, 193, 7, 0.15);
+    animation: chain-pulse 1s ease-in-out infinite;
+}
+
+.chain-item.critical {
+    border-color: var(--hospital-red);
+    background: rgba(255, 71, 87, 0.2);
+    animation: chain-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes chain-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.chain-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+
+.chain-count {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.chain-count.bonus-close {
+    color: var(--warning);
+}
+
+.chain-timer {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.chain-timer.warning {
+    color: var(--warning);
+}
+
+.chain-timer.critical {
+    color: var(--hospital-red);
+    font-weight: 600;
+}
+
+/* Chain bonus alert overlay */
+.chain-alert-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(233, 69, 96, 0.95);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    animation: alert-flash 0.5s ease-in-out infinite;
+}
+
+.chain-alert-overlay.visible {
+    display: flex;
+}
+
+@keyframes alert-flash {
+    0%, 100% { background: rgba(233, 69, 96, 0.95); }
+    50% { background: rgba(255, 107, 107, 0.95); }
+}
+
+.chain-alert-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+}
+
+.chain-alert-emoji {
+    font-size: 5rem;
+    animation: bounce 0.5s ease infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+.chain-alert-text {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.chain-alert-count {
+    font-size: 4rem;
+    font-weight: 800;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
 /* Buttons */
 .btn {
     padding: 6px 12px;
