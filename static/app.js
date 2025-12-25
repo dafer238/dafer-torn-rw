@@ -334,11 +334,26 @@ async function fetchUserStatus() {
         
         const data = await response.json();
         
-        // Store the original cooldown values and when we fetched them
+        // Smooth cooldown updates - only update if significantly different to prevent jumps
+        const elapsedSinceLast = Math.floor((Date.now() - userStatus.cooldownsFetchTime) / 1000);
+        
+        // For each cooldown, check if server value makes sense given elapsed time
+        const updateCooldown = (oldVal, newVal) => {
+            if (newVal === 0) return 0; // Always update if ready
+            if (oldVal === 0) return newVal; // First fetch
+            const expected = oldVal - elapsedSinceLast;
+            // If server value is within 10s of expected, keep counting down smoothly
+            // Otherwise, trust server (someone used an item)
+            if (Math.abs(newVal - expected) < 10) {
+                return oldVal; // Keep old value, continue smooth countdown
+            }
+            return newVal; // Significant change, update
+        };
+        
         userStatus.cooldowns = {
-            drug: data.cooldowns.drug || 0,
-            medical: data.cooldowns.medical || 0,
-            booster: data.cooldowns.booster || 0,
+            drug: updateCooldown(userStatus.cooldowns.drug, data.cooldowns.drug || 0),
+            medical: updateCooldown(userStatus.cooldowns.medical, data.cooldowns.medical || 0),
+            booster: updateCooldown(userStatus.cooldowns.booster, data.cooldowns.booster || 0),
         };
         userStatus.cooldownsFetchTime = Date.now();
         userStatus.lastFetch = Date.now();
@@ -830,6 +845,9 @@ function renderTargets() {
     const html = targets.map(target => renderTargetRow(target)).join('');
     elements.targetList.innerHTML = html;
     
+    // Immediately update timers after rendering so they show current values
+    updateTimers();
+    
     // Attach event listeners
     document.querySelectorAll('.claim-btn').forEach(btn => {
         btn.addEventListener('click', () => handleClaim(btn.dataset.targetId));
@@ -851,23 +869,23 @@ function renderTargetRow(target) {
     const isClaimed = !!target.claimed_by;
     const isTraveling = target.traveling;
     
-    // Row classes
+    // Row classes based on hospital status
     let rowClass = '';
     if (isTraveling) rowClass += ' traveling';
     if (isOut) rowClass += ' out';
     else if (remaining <= 30) rowClass += ' about-to-exit';
     if (isClaimed) rowClass += isMyTarget ? ' claimed-by-me' : ' claimed';
     
-    // Timer
+    // Timer class - updateTimers() will fill in the text
     let timerClass = 'timer-cell';
-    let timerText = 'OUT';
-    if (!isOut) {
-        timerText = formatTime(remaining);
-        if (remaining <= 10) timerClass += ' critical';
-        else if (remaining <= 30) timerClass += ' warning';
-        else timerClass += ' safe';
-    } else {
+    if (isOut) {
         timerClass += ' out';
+    } else if (remaining <= 10) {
+        timerClass += ' critical';
+    } else if (remaining <= 30) {
+        timerClass += ' warning';
+    } else {
+        timerClass += ' safe';
     }
     
     // Online status
@@ -908,7 +926,7 @@ function renderTargetRow(target) {
         <tr class="${rowClass}" 
             data-target-id="${target.user_id}" 
             data-hospital-until="${target.hospital_until || 0}">
-            <td class="${timerClass}">${timerText}</td>
+            <td class="${timerClass}"></td>
             <td class="name-cell">
                 <div class="player-links">
                     <a href="https://www.torn.com/profiles.php?XID=${target.user_id}" 
