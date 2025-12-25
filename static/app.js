@@ -7,8 +7,8 @@
 
 // Configuration
 const CONFIG = {
-    POLL_INTERVAL: 1000,
-    TIMER_INTERVAL: 100,
+    POLL_INTERVAL: 3000,  // 3 seconds to reduce CPU usage
+    TIMER_INTERVAL: 1000,  // 1 second for smooth client-side timers
     API_BASE: '/api',
     TOAST_DURATION: 3000,
 };
@@ -271,12 +271,27 @@ function startPolling() {
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
     // Poll user status every 5 seconds (less frequent to save API calls)
     state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+    
+    // Pause polling when tab is not visible to save CPU
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Tab hidden - clear intervals
+            if (state.pollInterval) clearInterval(state.pollInterval);
+            if (state.userStatusInterval) clearInterval(state.userStatusInterval);
+        } else {
+            // Tab visible - restart polling
+            fetchStatus();
+            fetchUserStatus();
+            state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
+            state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+        }
+    });
 }
 
 function startTimers() {
-    state.timerInterval = setInterval(updateTimers, CONFIG.TIMER_INTERVAL);
-    // Update user cooldown and chain timers every second
-    state.userCooldownInterval = setInterval(() => {
+    // Update all timers every second for smooth countdown
+    state.timerInterval = setInterval(() => {
+        updateTimers();
         updateUserCooldowns();
         updateChainTimer();
     }, 1000);
