@@ -201,11 +201,12 @@ function setupEventListeners() {
         });
     });
     
-    // Chain alert overlay - click to dismiss temporarily
+    // Chain alert overlay - click to dismiss for current chain count
     if (elements.chainAlertOverlay) {
         elements.chainAlertOverlay.addEventListener('click', () => {
             elements.chainAlertOverlay.classList.remove('visible');
-            // Will show again on next fetch if still close to bonus
+            // Remember the chain count when dismissed - only show again when chain increases
+            userStatus.lastDismissedChainCount = userStatus.chain.current;
         });
     }
 }
@@ -288,6 +289,7 @@ let userStatus = {
     cooldowns: { drug: 0, medical: 0, booster: 0 },
     chain: { current: 0, timeout: 0, cooldown: 0 },
     lastFetch: 0,
+    lastDismissedChainCount: 0,  // Track chain count when alert was dismissed
 };
 
 // Chain bonus milestones
@@ -456,7 +458,16 @@ function checkChainBonusAlert(current) {
     const hitsToBonus = getHitsToNextBonus(current);
     const nextBonus = getNextBonus(current);
     
-    if (hitsToBonus !== null && hitsToBonus <= 10 && current > 0) {
+    // Only show alert if:
+    // 1. We're within 10 hits of a bonus
+    // 2. Chain count is greater than 0
+    // 3. Chain count has increased since last dismissal (user dismissed at lower count)
+    const shouldShowAlert = hitsToBonus !== null && 
+                           hitsToBonus <= 10 && 
+                           current > 0 && 
+                           current > userStatus.lastDismissedChainCount;
+    
+    if (shouldShowAlert) {
         // Show big alert
         if (elements.chainAlertOverlay) {
             elements.chainAlertOverlay.classList.add('visible');
@@ -469,7 +480,7 @@ function checkChainBonusAlert(current) {
             }
         }
     } else {
-        // Hide alert
+        // Hide alert (but don't reset dismissal tracking)
         if (elements.chainAlertOverlay) {
             elements.chainAlertOverlay.classList.remove('visible');
         }
@@ -596,27 +607,47 @@ async function fetchStatus(forceRefresh = false) {
             }
         }
         
-        // Merge: server claims take precedence, but keep local claims that server hasn't seen yet
+        // Merge: server is authoritative, but keep THIS user's recent pending claims
+        // that the server hasn't acknowledged yet
         const now = Date.now();
+        const myUserId = parseInt(state.userId) || 0;
+        
+        // First, process all existing local claims
         for (const targetId in state.localClaims) {
             const local = state.localClaims[targetId];
             const server = serverClaims[targetId];
             
+            // Is this MY pending claim that server hasn't seen yet?
+            const isMyPendingClaim = local._pending && 
+                                    local.claimed_by_id === myUserId && 
+                                    (now - local._pendingTime < 5000);
+            
             if (server) {
-                // Server has a claim - use server's data
-                state.localClaims[targetId] = server;
-            } else if (local._pending && (now - local._pendingTime < 5000)) {
-                // Local pending claim, server doesn't have it yet - keep local
-                // This will be shown until server confirms
+                // Server has a claim for this target
+                if (isMyPendingClaim && server.claimed_by_id !== myUserId) {
+                    // Someone else claimed it while my claim was pending
+                    // Server wins - use their claim
+                    state.localClaims[targetId] = server;
+                } else {
+                    // Use server data (could be my confirmed claim or someone else's)
+                    state.localClaims[targetId] = server;
+                }
             } else {
-                // Server says no claim, and no recent pending - remove local
-                delete state.localClaims[targetId];
+                // Server says no claim on this target
+                if (isMyPendingClaim) {
+                    // Keep my recent pending claim until server confirms
+                } else {
+                    // No server claim and not my pending - remove
+                    delete state.localClaims[targetId];
+                }
             }
         }
         
-        // Add any new claims from server
+        // Add any new claims from server (other users' claims we didn't know about)
         for (const targetId in serverClaims) {
-            state.localClaims[targetId] = serverClaims[targetId];
+            if (!state.localClaims[targetId]) {
+                state.localClaims[targetId] = serverClaims[targetId];
+            }
         }
         
         // Apply local claims to targets for rendering
