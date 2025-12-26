@@ -848,6 +848,10 @@ function renderTargets() {
     document.querySelectorAll('.unclaim-btn').forEach(btn => {
         btn.addEventListener('click', () => handleUnclaim(btn.dataset.targetId));
     });
+    
+    document.querySelectorAll('.copy-target-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleCopyTarget(btn.dataset.targetId, btn.dataset.targetName));
+    });
 }
 
 function renderTargetRow(target) {
@@ -927,6 +931,8 @@ function renderTargetRow(target) {
                     </a>
                     <a href="https://www.torn.com/loader.php?sid=attack&user2ID=${target.user_id}" 
                        target="_blank" rel="noopener" class="attack-link" title="Attack">⚔</a>
+                    <button class="copy-target-btn" data-target-id="${target.user_id}" 
+                            data-target-name="${escapeHtml(target.name)}" title="Copy target info">📋</button>
                     ${badges}
                 </div>
             </td>
@@ -1021,6 +1027,21 @@ async function handleUnclaim(targetId) {
     
     // Refresh to get latest server data
     fetchStatus(true);
+}
+
+function handleCopyTarget(targetId, targetName) {
+    const profileUrl = `https://www.torn.com/profiles.php?XID=${targetId}`;
+    const attackUrl = `https://www.torn.com/loader.php?sid=attack&user2ID=${targetId}`;
+    
+    // Format: [name [id]](profile_url) - [Attack](attack_url)
+    const markdown = `[${targetName} [${targetId}]](${profileUrl}) - [Attack](${attackUrl})`;
+    
+    navigator.clipboard.writeText(markdown).then(() => {
+        showToast('Target info copied!', 'success');
+    }).catch(err => {
+        console.error('Copy failed:', err);
+        showToast('Failed to copy', 'error');
+    });
 }
 
 function showToast(message, type = 'info') {
