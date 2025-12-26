@@ -1046,8 +1046,8 @@ function handleCopyTarget(targetId, targetName, onlineStatus) {
         circle = '🟡'; // Yellow circle
     }
     
-    // Format: ⚫ <a href="profile_url">Name's Profile [ID]</a> - <a href="attack_url">Attack</a>
-    const html = `${circle} <a href="${profileUrl}">${targetName}'s Profile [${targetId}]</a> - <a href="${attackUrl}">Attack</a>`;
+    // Format: ⚫ <a href="profile_url">Name [ID]</a> - <a href="attack_url">Attack</a>
+    const html = `${circle} <a href="${profileUrl}">${targetName} [${targetId}]</a> - <a href="${attackUrl}">Attack</a>`;
     
     navigator.clipboard.writeText(html).then(() => {
         showToast('Target info copied!', 'success');
