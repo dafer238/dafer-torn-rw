@@ -33,6 +33,11 @@ from api import (
     hospital_cache,
     TornClient,
 )
+from api.leaderboards import (
+    get_leaderboards,
+    update_user_stats_from_api_call,
+    Leaderboards,
+)
 
 
 # Load environment variables
@@ -180,6 +185,13 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
     # Cache the validation
     if player_id:
         faction_validation_cache[player_id] = (allowed_faction_id, now)
+    
+    # Passively collect user stats for leaderboards (throttled to once per hour per user)
+    if player_id:
+        last_update = stats_collection_cache.get(player_id, 0)
+        if (now - last_update) >= STATS_COLLECTION_INTERVAL:
+            stats_collection_cache[player_id] = now
+            asyncio.create_task(update_user_stats_from_api_call(x_api_key, player_id))
 
     return x_api_key, player_id or 0
 
@@ -218,6 +230,10 @@ CLAIMS_CACHE_TTL = 2  # Cache claims for 2 seconds
 # Cache for faction validation (player_id -> faction_id mapping)
 faction_validation_cache: dict[int, tuple[int, float]] = {}  # player_id -> (faction_id, timestamp)
 FACTION_CACHE_TTL = 300  # Cache faction membership for 5 minutes
+
+# Cache for stats collection throttling (player_id -> last_update_timestamp)
+stats_collection_cache: dict[int, float] = {}
+STATS_COLLECTION_INTERVAL = 3600  # Only collect stats once per hour per user
 
 
 # Create FastAPI app
@@ -598,6 +614,31 @@ async def get_stats():
         "claims": claim_mgr.stats(),
         "timestamp": int(time.time()),
     }
+
+
+@app.get("/api/leaderboards", response_model=Leaderboards)
+async def get_leaderboards_endpoint(
+    force_refresh: bool = Query(False, description="Force recalculation of leaderboards"),
+    auth: tuple[str, int] = Depends(check_faction_access),
+):
+    """
+    Get faction leaderboards for xanax, overdoses, gym gains, and hospital time.
+    Leaderboards are cached and updated every hour.
+    """
+    api_key, player_id = auth
+    
+    # On first request, ensure we have stats for this user
+    # Check if we have any stats for this player
+    from api.leaderboards import stats_cache, update_user_stats_from_api_call
+    
+    if player_id not in stats_cache:
+        print(f"First leaderboard request for player {player_id}, collecting stats synchronously...")
+        # Collect stats synchronously on first request
+        await update_user_stats_from_api_call(api_key, player_id)
+        # Force refresh to include the new data
+        force_refresh = True
+    
+    return await get_leaderboards(force_refresh=force_refresh)
 
 
 # TornStats cache (in-memory, keyed by faction ID) - DISABLED, using estimation instead

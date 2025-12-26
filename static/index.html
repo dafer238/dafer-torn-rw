@@ -353,43 +353,76 @@
         </div>
       </div>
 
-      <div class="target-table-container">
-        <table class="target-table" id="target-table">
-          <thead>
-            <tr>
-              <th class="sortable" data-sort="timer">
-                Timer <span class="sort-icon">▼</span>
-              </th>
-              <th class="sortable" data-sort="name">
-                Name <span class="sort-icon"></span>
-              </th>
-              <th class="sortable" data-sort="level">
-                Lvl <span class="sort-icon"></span>
-              </th>
-              <th class="sortable" data-sort="stats">
-                Stats <span class="sort-icon"></span>
-              </th>
-              <th class="sortable" data-sort="online">
-                Status <span class="sort-icon"></span>
-              </th>
-              <th>Reason</th>
-              <th class="sortable" data-sort="claimed">
-                Claimed <span class="sort-icon"></span>
-              </th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="target-list">
-            <tr>
-              <td colspan="8" class="loading">Loading targets...</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="main-layout">
+        <!-- Left Sidebar: Xanax & Overdose Leaderboards -->
+        <aside class="sidebar sidebar-left" id="sidebar-left">
+          <div class="sidebar-section">
+            <h3>💊 Xanax Kings</h3>
+            <small style="color: #a0a0a0; font-size: 0.7rem; display: block; margin: -6px 0 8px 0;">Shows lifetime totals until we have 7+ days of history, then switches to deltas</small>
+            <div class="leaderboard-tabs">
+              <button class="lb-tab active" data-lb="xanax-week">Week</button>
+              <button class="lb-tab" data-lb="xanax-month">Month</button>
+              <button class="lb-tab" data-lb="xanax-year">Year</button>
+            </div>
+            <div class="leaderboard-content" id="xanax-week"></div>
+            <div class="leaderboard-content hidden" id="xanax-month"></div>
+            <div class="leaderboard-content hidden" id="xanax-year"></div>
+          </div>
+          <div class="sidebar-section">
+            <h3>💀 Overdose Records</h3>
+            <div class="leaderboard-tabs">
+              <button class="lb-tab active" data-lb="overdoses-week">Week</button>
+              <button class="lb-tab" data-lb="overdoses-month">Month</button>
+              <button class="lb-tab" data-lb="overdoses-year">Year</button>
+            </div>
+            <div class="leaderboard-content" id="overdoses-week"></div>
+            <div class="leaderboard-content hidden" id="overdoses-month"></div>
+            <div class="leaderboard-content hidden" id="overdoses-year"></div>
+          </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-content">
+          <div class="target-table-container">
+            <table class="target-table" id="target-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="timer">
+                    Timer <span class="sort-icon">▼</span>
+                  </th>
+                  <th class="sortable" data-sort="name">
+                    Name <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="level">
+                    Lvl <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="stats">
+                    Stats <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="online">
+                    Status <span class="sort-icon"></span>
+                  </th>
+                  <th>Reason</th>
+                  <th class="sortable" data-sort="claimed">
+                    Claimed <span class="sort-icon"></span>
+                  </th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="target-list">
+                <tr>
+                  <td colspan="8" class="loading">Loading targets...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
     <div id="toast-container"></div>
 
+    <script src="/static/leaderboards.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>
