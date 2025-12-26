@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: torn-rw-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENEMY_FACTION_IDS=${ENEMY_FACTION_IDS}
+      - FACTION_ID=${FACTION_ID}
+      - CLAIM_EXPIRY=${CLAIM_EXPIRY:-300}
+      - MAX_CLAIMS_PER_USER=${MAX_CLAIMS_PER_USER:-1}
+      - KV_REST_API_URL=redis://redis:6379
+      - KV_REST_API_TOKEN=not-needed
+    depends_on:
+      - redis
+    networks:
+      - torn-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: torn-rw-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - torn-network
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-data:
+
+networks:
+  torn-network:
+    driver: bridge
