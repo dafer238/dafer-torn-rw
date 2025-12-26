@@ -878,18 +878,18 @@ Share the URL with your faction and enjoy unlimited tracking!
 
 ## Appendix: Environment Variables Reference
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ENEMY_FACTION_IDS` | ✅ Yes | - | Comma-separated faction IDs to track |
-| `FACTION_ID` | ❌ No | None | Restrict access to specific faction |
-| `LEADERSHIP_WHITELIST` | ❌ No | None | Player IDs who can view faction overview |
-| `DRUG_CD_MAX` | ❌ No | 480 | Max drug cooldown in minutes |
-| `MED_CD_MAX` | ❌ No | 360 | Max medical cooldown in minutes |
-| `BOOSTER_CD_MAX` | ❌ No | 2880 | Max booster cooldown in minutes |
-| `CLAIM_EXPIRY` | ❌ No | 120 | Claim expiry time in seconds |
-| `MAX_CLAIMS_PER_USER` | ❌ No | 3 | Max simultaneous claims per user |
-| `KV_REST_API_URL` | ✅ Yes | - | Redis connection URL |
-| `KV_REST_API_TOKEN` | ❌ No | - | Redis token (not needed for local) |
+| Variable               | Required | Default | Description                              |
+| ---------------------- | -------- | ------- | ---------------------------------------- |
+| `ENEMY_FACTION_IDS`    | ✅ Yes    | -       | Comma-separated faction IDs to track     |
+| `FACTION_ID`           | ❌ No     | None    | Restrict access to specific faction      |
+| `LEADERSHIP_WHITELIST` | ❌ No     | None    | Player IDs who can view faction overview |
+| `DRUG_CD_MAX`          | ❌ No     | 480     | Max drug cooldown in minutes             |
+| `MED_CD_MAX`           | ❌ No     | 360     | Max medical cooldown in minutes          |
+| `BOOSTER_CD_MAX`       | ❌ No     | 2880    | Max booster cooldown in minutes          |
+| `CLAIM_EXPIRY`         | ❌ No     | 120     | Claim expiry time in seconds             |
+| `MAX_CLAIMS_PER_USER`  | ❌ No     | 3       | Max simultaneous claims per user         |
+| `KV_REST_API_URL`      | ✅ Yes    | -       | Redis connection URL                     |
+| `KV_REST_API_TOKEN`    | ❌ No     | -       | Redis token (not needed for local)       |
 
 ---
 
