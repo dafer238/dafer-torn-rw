@@ -668,6 +668,7 @@ header h1 {
 /* Target Table */
 .target-table-container {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .target-table {
@@ -676,6 +677,7 @@ header h1 {
     background: var(--bg-secondary);
     border-radius: 6px;
     overflow: hidden;
+    min-width: 600px; /* Ensure table has minimum width */
 }
 
 .target-table thead {
@@ -976,8 +978,24 @@ header h1 {
         gap: 6px;
     }
     
-    .reason-cell {
-        display: none;
+    /* On tablets, keep stats bar more readable */
+    .stats-bar {
+        flex-wrap: wrap;
+        gap: 2px;
+    }
+    
+    .stat {
+        min-width: calc(33.33% - 2px);  /* 3 columns on tablet */
+        border-right: none;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+    }
+    
+    /* Slightly reduce table font on tablets */
+    .target-table th,
+    .target-table td {
+        padding: 6px 8px;
+        font-size: 0.72rem;
     }
 }
 
@@ -991,22 +1009,165 @@ header h1 {
         gap: 6px;
     }
     
+    /* Make stats bar wrap on mobile */
     .stats-bar {
         flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
     }
     
     .stat {
-        padding: 4px 10px;
-        min-width: 60px;
+        padding: 6px 8px;
+        min-width: calc(50% - 2px);  /* 2 columns on mobile */
+        border-right: none;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
     }
     
+    /* Reduce table padding */
     .target-table th,
     .target-table td {
         padding: 4px 6px;
+        font-size: 0.7rem;
     }
     
+    /* Hide less important columns on mobile */
+    .target-table th:nth-child(4),  /* Stats */
+    .target-table td:nth-child(4) {
+        display: none;
+    }
+    
+    /* Make status text shorter */
     .online-text {
         display: none;
+    }
+    
+    .online-cell {
+        font-size: 0.7rem;
+    }
+    
+    /* Reason column: show only icon or shortened text */
+    .reason-cell {
+        max-width: 80px;
+        font-size: 0.65rem;
+    }
+    
+    /* Make action buttons smaller */
+    .btn-small {
+        padding: 2px 4px;
+        font-size: 0.65rem;
+    }
+    
+    /* Timer cell */
+    .timer-cell {
+        font-size: 0.7rem;
+        min-width: 50px;
+    }
+    
+    /* Name cell */
+    .name-cell {
+        font-size: 0.7rem;
+    }
+    
+    .player-links a {
+        font-size: 0.65rem;
+    }
+}
+
+/* Extra small screens (very small smartphones) */
+@media (max-width: 400px) {
+    .stat {
+        padding: 4px 6px;
+        min-width: calc(50% - 2px);
+    }
+    
+    .stat-value {
+        font-size: 0.9rem;
+    }
+    
+    .stat-label {
+        font-size: 0.6rem;
+    }
+    
+    /* Make table even more compact */
+    .target-table th,
+    .target-table td {
+        padding: 3px 4px;
+        font-size: 0.65rem;
+    }
+    
+    /* Hide claim column on very small screens */
+    .target-table th:nth-child(7),  /* Claimed */
+    .target-table td:nth-child(7) {
+        display: none;
+    }
+    
+    .reason-cell {
+        max-width: 60px;
+    }
+    
+    /* Make user status bar wrap properly on mobile */
+    .user-status-bar {
+        gap: 6px;
+        padding: 6px;
+    }
+    
+    .user-status-item {
+        gap: 4px;
+        flex-basis: calc(50% - 3px);
+    }
+    
+    .user-status-label {
+        font-size: 0.65rem;
+        min-width: 28px;
+    }
+    
+    .bar-container {
+        width: 70px;
+        height: 14px;
+    }
+    
+    .cooldown-value,
+    .status-state {
+        font-size: 0.7rem;
+    }
+    
+    .cooldown-label {
+        font-size: 0.6rem;
+    }
+    
+    /* Make chain display smaller */
+    .chain-item {
+        padding: 3px 8px;
+        gap: 1px;
+    }
+    
+    .chain-label {
+        font-size: 0.6rem;
+    }
+    
+    .chain-value {
+        font-size: 0.75rem;
+    }
+    
+    .chain-timer {
+        font-size: 0.65rem;
+    }
+    
+    /* View toggle buttons */
+    .toggle-btn-compact {
+        padding: 3px 8px;
+        font-size: 0.65rem;
+    }
+    
+    /* Config panel on mobile */
+    .config-form {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .form-group input {
+        width: 100%;
     }
 }
 
@@ -1213,14 +1374,16 @@ header h1 {
     border-radius: 8px;
     padding: 12px;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .faction-table {
     width: 100%;
     border-collapse: collapse;
     background: var(--bg-secondary);
-        border-radius: 6px;
-        overflow: hidden;
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 800px; /* Ensure minimum width for horizontal scroll */
 }
 
 .faction-table thead {
@@ -1423,6 +1586,34 @@ header h1 {
     color: var(--warning);
     margin-left: 4px;
 }
+
+/* Mobile responsive styles for faction table */
+@media (max-width: 600px) {
+    .faction-overview-container {
+        padding: 6px;
+    }
+    
+    .faction-table {
+        font-size: 0.65rem;
+        min-width: 700px; /* Allow horizontal scroll */
+    }
+    
+    .faction-table th,
+    .faction-table td {
+        padding: 4px 6px;
+        font-size: 0.65rem;
+    }
+    
+    .bar-mini {
+        width: 70px;
+        height: 16px;
+    }
+    
+    .bar-text-mini {
+        font-size: 9px;
+    }
+}
+
 @media (max-width: 1200px) {
     .main-layout {
         grid-template-columns: 1fr;
