@@ -7,7 +7,7 @@
 
 // Configuration
 const CONFIG = {
-    POLL_INTERVAL: 3000,  // 3 seconds to reduce CPU usage
+    POLL_INTERVAL: 5000,  // 10 seconds - reduced to stay within Vercel free tier
     TIMER_INTERVAL: 1000,  // 1 second for smooth client-side timers
     API_BASE: '/api',
     TOAST_DURATION: 3000,
@@ -275,8 +275,8 @@ function startPolling() {
     fetchStatus();
     fetchUserStatus();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
-    // Poll user status every 5 seconds (less frequent to save API calls)
-    state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+    // Poll user status every 15 seconds (reduced to stay within Vercel limits)
+    state.userStatusInterval = setInterval(fetchUserStatus, 10000);
     
     // Pause polling when tab is not visible to save CPU
     document.addEventListener('visibilitychange', () => {
@@ -342,7 +342,7 @@ async function fetchUserStatus() {
         // Only update cooldown values if 30+ seconds have passed since last update
         // Otherwise keep counting down smoothly client-side
         const timeSinceLastCooldownUpdate = Date.now() - userStatus.cooldownsFetchTime;
-        if (timeSinceLastCooldownUpdate >= 30000 || userStatus.cooldownsFetchTime === 0) {
+        if (timeSinceLastCooldownUpdate >= 60000 || userStatus.cooldownsFetchTime === 0) {
             // 30+ seconds passed or first fetch - update cooldown values
             userStatus.cooldowns = {
                 drug: data.cooldowns.drug || 0,
