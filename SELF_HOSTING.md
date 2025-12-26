@@ -175,9 +175,17 @@ ENEMY_FACTION_IDS=12345,67890
 
 # Your Faction ID (restricts access to your faction)
 FACTION_ID=11111
+
 # Leadership Whitelist (comma-separated player IDs who can access faction overview)
 # Leave blank if you don't want faction overview feature
 LEADERSHIP_WHITELIST=123456,789012
+
+# Faction Overview - Max Cooldown Times (in minutes)
+# Used to display cooldown bars in faction overview table
+DRUG_CD_MAX=480      # 8 hours (xanax CD from your faction perks)
+MED_CD_MAX=360       # 6 hours (medical CD from your faction perks)
+BOOSTER_CD_MAX=2880  # 48 hours (booster CD from your faction perks)
+
 # Claim Configuration
 CLAIM_EXPIRY=120
 MAX_CLAIMS_PER_USER=3
@@ -417,6 +425,12 @@ FACTION_ID=11111
 # Leadership Whitelist (comma-separated player IDs who can access faction overview)
 # Leave blank if you don't want faction overview feature
 LEADERSHIP_WHITELIST=123456,789012
+
+# Faction Overview - Max Cooldown Times (in minutes)
+# Used to display cooldown bars in faction overview table
+DRUG_CD_MAX=480      # 8 hours (xanax CD from your faction perks)
+MED_CD_MAX=360       # 6 hours (medical CD from your faction perks)
+BOOSTER_CD_MAX=2880  # 48 hours (booster CD from your faction perks)
 
 # Claim Configuration
 CLAIM_EXPIRY=120
