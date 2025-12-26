@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Header
+from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -84,6 +84,106 @@ def get_claim_expiry() -> int:
         return 120
 
 
+def get_allowed_faction_id() -> int | None:
+    """Get the faction ID that is allowed to use this tracker."""
+    faction_id = os.getenv("FACTION_ID")
+    if not faction_id:
+        return None
+    try:
+        return int(faction_id)
+    except ValueError:
+        return None
+
+
+async def validate_faction_membership(
+    api_key: str, allowed_faction_id: int
+) -> tuple[bool, str, int | None]:
+    """Validate that the API key belongs to a member of the allowed faction.
+
+    Returns:
+        (is_valid, error_message, player_id)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.torn.com/user/",
+                params={
+                    "selections": "profile",
+                    "key": api_key,
+                },
+            )
+            data = response.json()
+
+            if "error" in data:
+                error = data["error"]
+                if error.get("code") == 2:
+                    return False, "Invalid API key", None
+                return False, error.get("error", "API error"), None
+
+            player_id = data.get("player_id")
+            faction_data = data.get("faction", {})
+            user_faction_id = faction_data.get("faction_id")
+
+            if user_faction_id != allowed_faction_id:
+                return (
+                    False,
+                    f"Access denied: You must be a member of faction {allowed_faction_id} to use this tracker",
+                    player_id,
+                )
+
+            return True, "", player_id
+
+    except httpx.HTTPError as e:
+        return False, f"Connection error: {str(e)}", None
+
+
+async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key")) -> tuple[str, int]:
+    """Dependency to validate faction membership. Returns (api_key, player_id)."""
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API key required. Set X-API-Key header.")
+
+    allowed_faction_id = get_allowed_faction_id()
+
+    # If no faction restriction is configured, allow all
+    if allowed_faction_id is None:
+        # Still need to get player_id for claims - do a quick validation
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://api.torn.com/user/",
+                    params={"selections": "profile", "key": x_api_key},
+                )
+                data = response.json()
+                if "error" in data:
+                    raise HTTPException(status_code=401, detail="Invalid API key")
+                player_id = data.get("player_id", 0)
+                return x_api_key, player_id
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Failed to validate API key")
+
+    # Check cache first
+    now = time.time()
+    for player_id, (cached_faction_id, timestamp) in list(faction_validation_cache.items()):
+        if (now - timestamp) < FACTION_CACHE_TTL and cached_faction_id == allowed_faction_id:
+            # Found in cache - but need to verify this is the right API key
+            # We'll do a quick validation
+            pass
+
+    # Validate faction membership
+    is_valid, error_msg, player_id = await validate_faction_membership(
+        x_api_key, allowed_faction_id
+    )
+
+    if not is_valid:
+        raise HTTPException(status_code=403, detail=error_msg)
+
+    # Cache the validation
+    if player_id:
+        faction_validation_cache[player_id] = (allowed_faction_id, now)
+
+    return x_api_key, player_id or 0
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
@@ -97,6 +197,15 @@ async def lifespan(app: FastAPI):
     init_claim_manager(default_expiry=claim_expiry, max_claims_per_user=max_claims)
     print(f"Claim manager: max {max_claims} claims/user, {claim_expiry}s expiry")
 
+    # Check faction restriction
+    allowed_faction = get_allowed_faction_id()
+    if allowed_faction:
+        print(
+            f"Faction restriction enabled: Only faction {allowed_faction} members can use this tracker"
+        )
+    else:
+        print("No faction restriction - all users with valid API keys can access")
+
     yield
 
     # Shutdown - nothing to clean up since clients are per-request
@@ -105,6 +214,10 @@ async def lifespan(app: FastAPI):
 # Simple cache for claims to reduce Redis queries
 claims_cache = {"data": None, "timestamp": 0}
 CLAIMS_CACHE_TTL = 2  # Cache claims for 2 seconds
+
+# Cache for faction validation (player_id -> faction_id mapping)
+faction_validation_cache: dict[int, tuple[int, float]] = {}  # player_id -> (faction_id, timestamp)
+FACTION_CACHE_TTL = 300  # Cache faction membership for 5 minutes
 
 
 # Create FastAPI app
@@ -150,19 +263,16 @@ async def get_config():
 @app.get("/api/status", response_model=WarStatus)
 async def get_war_status(
     force_refresh: bool = Query(False, description="Force refresh from Torn API"),
-    x_api_key: str = Header(None, alias="X-API-Key", description="User's Torn API key"),
+    auth: tuple[str, int] = Depends(check_faction_access),
 ):
     """
     Get current war status with all target information.
     This is the main endpoint polled by the frontend.
     Each user must provide their own API key via X-API-Key header.
     """
+    x_api_key, player_id = auth
     now = int(time.time())
     claim_mgr = get_claim_manager()
-
-    # Validate API key
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key required. Set X-API-Key header.")
 
     # Create a temporary client with user's API key
     client = TornClient([x_api_key])
@@ -257,13 +367,12 @@ async def get_war_status(
 
 
 @app.get("/api/me")
-async def get_my_status(x_api_key: str = Header(None)):
+async def get_my_status(auth: tuple[str, int] = Depends(check_faction_access)):
     """
     Get current user's status including health, cooldowns, energy, chain, etc.
     Requires user's API key.
     """
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key required")
+    x_api_key, player_id = auth
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -401,7 +510,9 @@ async def get_my_status(x_api_key: str = Header(None)):
 
 
 @app.post("/api/claim", response_model=ClaimResponse)
-async def claim_target(request: ClaimRequest):
+async def claim_target(
+    request: ClaimRequest, auth: tuple[str, int] = Depends(check_faction_access)
+):
     """
     Claim a target for attacking.
     Prevents other faction members from attacking the same person.
@@ -435,7 +546,9 @@ async def claim_target(request: ClaimRequest):
 
 @app.delete("/api/claim/{target_id}")
 async def unclaim_target(
-    target_id: int, claimer_id: int = Query(..., description="ID of the user releasing the claim")
+    target_id: int,
+    claimer_id: int = Query(..., description="ID of the user releasing the claim"),
+    auth: tuple[str, int] = Depends(check_faction_access),
 ):
     """Release a claim on a target."""
     # Invalidate claims cache

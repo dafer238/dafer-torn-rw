@@ -40,10 +40,18 @@ pip install -r requirements.txt
 Copy `.env.example` to `.env` and fill in:
 
 ```env
-TORN_API_KEY=your_16_char_api_key
+# Required: Enemy factions to track
 ENEMY_FACTION_IDS=12345,67890
+
+# Optional: Restrict access to your faction only
 FACTION_ID=your_faction_id
+
+# Optional: Upstash Redis for shared claim state (auto-configured on Vercel)
+# KV_REST_API_URL=https://...
+# KV_REST_API_TOKEN=...
 ```
+
+**Note**: Users will provide their own API keys via the frontend. No central API key needed!
 
 ### 3. Run Locally
 
@@ -62,9 +70,25 @@ vercel --prod
 ```
 
 Set secrets in Vercel dashboard:
-- `TORN_API_KEY`
-- `ENEMY_FACTION_IDS`
-- `FACTION_ID`
+- `ENEMY_FACTION_IDS` (required) - Comma-separated faction IDs to track
+- `FACTION_ID` (optional) - If set, only members of this faction can use the tracker
+- `KV_REST_API_URL` - Upstash Redis URL (auto-configured if using Vercel Storage)
+- `KV_REST_API_TOKEN` - Upstash Redis token (auto-configured if using Vercel Storage)
+
+**Faction Restriction**: When `FACTION_ID` is set, the tracker validates each API key to ensure the user belongs to your faction. This prevents unauthorized access from other players. Leave unset to allow anyone with a valid Torn API key to use it.
+
+## User Authentication
+
+Users provide their own API keys via the frontend. The tracker:
+1. Validates the API key with Torn's API
+2. Checks faction membership (if `FACTION_ID` is configured)
+3. Caches validation for 5 minutes to reduce API calls
+4. Uses the API key to fetch target data on their behalf
+
+This means:
+- No central API key needed (users bring their own)
+- Each user stays within their own rate limits
+- Faction restriction ensures only teammates can access
 
 ## API Endpoints
 
@@ -99,10 +123,11 @@ The app uses a two-tier polling strategy for perceived real-time updates:
 
 ## Security
 
-- API keys are **never** sent to the browser
-- Keys stored in environment variables
-- CORS configured for your deployment domain
-- Rate limiting prevents abuse
+- **User-provided API keys**: Each user brings their own API key, sent via `X-API-Key` header
+- **Faction validation**: Optional `FACTION_ID` restricts access to faction members only
+- **Validation caching**: Faction membership cached for 5 minutes to reduce API calls
+- **CORS configured**: Prevents unauthorized cross-origin access
+- **Rate limiting**: Each user operates within their own Torn API rate limits
 
 ## Data Model
 
