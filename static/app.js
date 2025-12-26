@@ -125,11 +125,6 @@ function saveConfig() {
         localStorage.setItem('tornApiKey', state.apiKey);
         elements.configPanel.classList.remove('visible');
         showToast('Configuration saved!', 'success');
-        
-        // Trigger leaderboards refresh if available
-        if (window.refreshLeaderboards) {
-            window.refreshLeaderboards();
-        }
     } else {
         showToast('Please enter API key, ID and name', 'error');
     }

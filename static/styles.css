@@ -1013,7 +1013,7 @@ header h1 {
 /* Leaderboard Sidebar Styles */
 .main-layout {
     display: grid;
-    grid-template-columns: 250px 1fr;
+    grid-template-columns: 1fr;
     gap: 12px;
     margin-top: 12px;
 }
@@ -1173,6 +1173,151 @@ header h1 {
     min-width: 0;
 }
 
+/* View Toggle */
+.view-toggle {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 12px 0;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.toggle-btn {
+    padding: 8px 20px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+    background: var(--accent);
+    color: var(--text-primary);
+}
+
+.toggle-btn.active {
+    background: var(--accent);
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(233, 69, 96, 0.3);
+}
+
+/* Faction Overview Table */
+.faction-overview-container {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.faction-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.faction-table th {
+    background: var(--bg-card);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.faction-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.faction-table tbody tr:hover {
+    background: var(--bg-card);
+}
+
+.faction-table a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.faction-table a:hover {
+    text-decoration: underline;
+}
+
+/* Status colors in faction table */
+.status-okay {
+    color: var(--success);
+}
+
+.status-hospital {
+    color: var(--hospital-red);
+    font-weight: 600;
+}
+
+.status-jail {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.status-traveling {
+    color: var(--traveling-blue);
+    font-weight: 500;
+}
+
+/* Mini bars for faction table */
+.bar-mini {
+    position: relative;
+    width: 80px;
+    height: 18px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.bar-fill-mini {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    transition: width 0.3s;
+}
+
+.life-bar-mini {
+    background: linear-gradient(90deg, #ff4757, #ff6348);
+}
+
+.energy-bar-mini {
+    background: linear-gradient(90deg, #00d26a, #2ed573);
+}
+
+.bar-text-mini {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    z-index: 1;
+}
+
+.no-data,
+.error {
+    text-align: center;
+    padding: 20px !important;
+    color: var(--text-secondary);
+}
+
+.error {
+    color: var(--hospital-red);
+}
 @media (max-width: 1200px) {
     .main-layout {
         grid-template-columns: 1fr;

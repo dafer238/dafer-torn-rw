@@ -12,6 +12,7 @@ import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import List
 
 import httpx
 from dotenv import load_dotenv
@@ -37,6 +38,11 @@ from api.leaderboards import (
     get_leaderboards,
     update_user_stats_from_api_call,
     Leaderboards,
+)
+from api.faction_overview import (
+    store_faction_member_profile,
+    get_all_faction_profiles,
+    FactionMemberProfile,
 )
 
 
@@ -98,6 +104,17 @@ def get_allowed_faction_id() -> int | None:
         return int(faction_id)
     except ValueError:
         return None
+
+
+def get_leadership_whitelist() -> list[int]:
+    """Get list of player IDs allowed to access faction overview."""
+    whitelist_str = os.getenv("LEADERSHIP_WHITELIST", "")
+    if not whitelist_str:
+        return []
+    try:
+        return [int(pid.strip()) for pid in whitelist_str.split(",") if pid.strip()]
+    except ValueError:
+        return []
 
 
 async def validate_faction_membership(
@@ -234,6 +251,10 @@ FACTION_CACHE_TTL = 300  # Cache faction membership for 5 minutes
 # Cache for stats collection throttling (player_id -> last_update_timestamp)
 stats_collection_cache: dict[int, float] = {}
 STATS_COLLECTION_INTERVAL = 3600  # Only collect stats once per hour per user
+
+# Cache for faction overview (reduces Upstash reads)
+faction_overview_cache = {"data": None, "timestamp": 0}
+FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
 
 
 # Create FastAPI app
@@ -479,6 +500,9 @@ async def get_my_status(auth: tuple[str, int] = Depends(check_faction_access)):
                         "cooldown": chain.get("cooldown", 0),
                     }
 
+            # Store faction member profile for leadership view (async, non-blocking)
+            asyncio.create_task(store_faction_member_profile(player_id, data))
+
             return {
                 "name": data.get("name", "Unknown"),
                 "player_id": data.get("player_id", 0),
@@ -523,6 +547,46 @@ async def get_my_status(auth: tuple[str, int] = Depends(check_faction_access)):
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Connection error: {str(e)}")
+
+
+@app.get("/api/faction-overview", response_model=List[FactionMemberProfile])
+async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_access)):
+    """
+    Get overview of all faction members who have used the tracker.
+    Only accessible to whitelisted leadership IDs.
+    Cached for 30 seconds to reduce Upstash operations.
+    """
+    x_api_key, player_id = auth
+
+    # Check if player is in leadership whitelist
+    whitelist = get_leadership_whitelist()
+    if not whitelist:
+        raise HTTPException(
+            status_code=403,
+            detail="Faction overview is disabled (no leadership whitelist configured)",
+        )
+
+    if player_id not in whitelist:
+        raise HTTPException(
+            status_code=403, detail="Access denied: You are not authorized to view faction overview"
+        )
+
+    # Check cache first to reduce Upstash operations
+    now_ms = time.time()
+    if (
+        faction_overview_cache["data"] is not None
+        and (now_ms - faction_overview_cache["timestamp"]) < FACTION_OVERVIEW_CACHE_TTL
+    ):
+        return faction_overview_cache["data"]
+
+    # Get all stored faction profiles from Upstash
+    profiles = await get_all_faction_profiles()
+    
+    # Update cache
+    faction_overview_cache["data"] = profiles
+    faction_overview_cache["timestamp"] = now_ms
+    
+    return profiles
 
 
 @app.post("/api/claim", response_model=ClaimResponse)

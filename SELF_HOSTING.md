@@ -175,7 +175,9 @@ ENEMY_FACTION_IDS=12345,67890
 
 # Your Faction ID (restricts access to your faction)
 FACTION_ID=11111
-
+# Leadership Whitelist (comma-separated player IDs who can access faction overview)
+# Leave blank if you don't want faction overview feature
+LEADERSHIP_WHITELIST=123456,789012
 # Claim Configuration
 CLAIM_EXPIRY=120
 MAX_CLAIMS_PER_USER=3
@@ -411,6 +413,10 @@ ENEMY_FACTION_IDS=12345,67890
 
 # Your Faction ID (optional, restricts access to your faction only)
 FACTION_ID=11111
+
+# Leadership Whitelist (comma-separated player IDs who can access faction overview)
+# Leave blank if you don't want faction overview feature
+LEADERSHIP_WHITELIST=123456,789012
 
 # Claim Configuration
 CLAIM_EXPIRY=120

@@ -353,37 +353,17 @@
         </div>
       </div>
 
-      <div class="main-layout">
-        <!-- Left Sidebar: Xanax & Overdose Leaderboards -->
-        <aside class="sidebar sidebar-left" id="sidebar-left">
-          <div class="sidebar-section">
-            <h3>💊 Xanax Kings</h3>
-            <small style="color: #a0a0a0; font-size: 0.7rem; display: block; margin: -6px 0 8px 0;">Shows lifetime totals until we have 7+ days of history, then switches to deltas</small>
-            <div class="leaderboard-tabs">
-              <button class="lb-tab active" data-lb="xanax-week">Week</button>
-              <button class="lb-tab" data-lb="xanax-month">Month</button>
-              <button class="lb-tab" data-lb="xanax-year">Year</button>
-            </div>
-            <div class="leaderboard-content" id="xanax-week"></div>
-            <div class="leaderboard-content hidden" id="xanax-month"></div>
-            <div class="leaderboard-content hidden" id="xanax-year"></div>
-          </div>
-          <div class="sidebar-section">
-            <h3>💀 Overdose Records</h3>
-            <div class="leaderboard-tabs">
-              <button class="lb-tab active" data-lb="overdoses-week">Week</button>
-              <button class="lb-tab" data-lb="overdoses-month">Month</button>
-              <button class="lb-tab" data-lb="overdoses-year">Year</button>
-            </div>
-            <div class="leaderboard-content" id="overdoses-week"></div>
-            <div class="leaderboard-content hidden" id="overdoses-month"></div>
-            <div class="leaderboard-content hidden" id="overdoses-year"></div>
-          </div>
-        </aside>
+      <!-- View Toggle (only shown if user has access) -->
+      <div class="view-toggle" id="view-toggle" style="display: none;">
+        <button class="toggle-btn active" data-view="targets">Enemy Targets</button>
+        <button class="toggle-btn" data-view="faction">Faction Overview</button>
+      </div>
 
+      <div class="main-layout">
         <!-- Main Content -->
         <div class="main-content">
-          <div class="target-table-container">
+          <!-- Enemy Targets Table -->
+          <div class="target-table-container" id="targets-view">
             <table class="target-table" id="target-table">
               <thead>
                 <tr>
@@ -416,13 +396,37 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Faction Overview Table (hidden by default) -->
+          <div class="faction-overview-container" id="faction-view" style="display: none;">
+            <table class="faction-table" id="faction-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Level</th>
+                  <th>Status</th>
+                  <th>❤️ Life</th>
+                  <th>⚡ Energy</th>
+                  <th>💊 Drug CD</th>
+                  <th>🏥 Med CD</th>
+                  <th>Hospital</th>
+                  <th>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody id="faction-list">
+                <tr>
+                  <td colspan="9" class="loading">Loading faction data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
 
     <div id="toast-container"></div>
 
-    <script src="/static/leaderboards.js"></script>
+    <script src="/static/factionOverview.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>
