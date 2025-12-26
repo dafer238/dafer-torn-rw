@@ -41,6 +41,10 @@ let state = {
     // Prevent concurrent fetches
     isFetching: false,
     fetchRequestId: 0,
+    // Chain timer tracking
+    lastChainCount: 0,
+    chainTimerSnapshot: 0,  // When we took the snapshot
+    chainTimeoutSnapshot: 0, // Timeout value at snapshot
 };
 
 // DOM Elements
@@ -412,6 +416,13 @@ function updateChainDisplay() {
     const timeout = chain.timeout || 0;
     const cooldown = chain.cooldown || 0;
     
+    // If chain count changed, update snapshot for client-side countdown
+    if (current !== state.lastChainCount) {
+        state.lastChainCount = current;
+        state.chainTimerSnapshot = Date.now();
+        state.chainTimeoutSnapshot = timeout;
+    }
+    
     // Update chain count
     if (elements.chainCount) {
         elements.chainCount.textContent = current.toLocaleString();
@@ -445,13 +456,13 @@ function updateChainDisplay() {
 }
 
 function updateChainTimer() {
-    const fetchAge = Math.floor((Date.now() - userStatus.lastFetch) / 1000);
-    const timeout = userStatus.chain.timeout || 0;
-    const remaining = Math.max(0, timeout - fetchAge);
-    const current = userStatus.chain.current || 0;
+    // Use client-side countdown from snapshot for smooth timer
+    const elapsed = Math.floor((Date.now() - state.chainTimerSnapshot) / 1000);
+    const remaining = Math.max(0, state.chainTimeoutSnapshot - elapsed);
+    const current = state.lastChainCount;
     
     if (elements.chainTimer) {
-        if (current === 0 || timeout === 0) {
+        if (current === 0 || state.chainTimeoutSnapshot === 0) {
             elements.chainTimer.textContent = '--:--';
             elements.chainTimer.className = 'chain-timer';
         } else if (remaining > 0) {

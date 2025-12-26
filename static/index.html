@@ -96,6 +96,11 @@
           <span class="chain-count" id="chain-count">0</span>
           <span class="chain-timer" id="chain-timer">--:--</span>
         </a>
+        <!-- View Toggle (only shown if user has access) -->
+        <div class="user-status-item view-toggle-compact" id="view-toggle" style="display: none;">
+          <button class="toggle-btn-compact active" data-view="targets">Targets</button>
+          <button class="toggle-btn-compact" data-view="faction">Faction</button>
+        </div>
         <div class="user-status-item status-item" id="player-status-item">
           <span class="status-state" id="player-state">--</span>
         </div>
@@ -312,13 +317,12 @@
               <option value="10000000000">10B</option>
             </select>
           </div>
-        </div>
-
-        <div class="action-controls">
-          <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
-          <button id="toggle-config" class="btn btn-secondary">
-            ⚙️ Settings
-          </button>
+          <div class="action-controls">
+            <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
+            <button id="toggle-config" class="btn btn-secondary">
+              ⚙️ Settings
+            </button>
+          </div>
         </div>
       </div>
 
@@ -351,12 +355,6 @@
           <span class="stat-value" id="my-claims-count">0</span>
           <span class="stat-label">My Claims</span>
         </div>
-      </div>
-
-      <!-- View Toggle (only shown if user has access) -->
-      <div class="view-toggle" id="view-toggle" style="display: none;">
-        <button class="toggle-btn active" data-view="targets">Enemy Targets</button>
-        <button class="toggle-btn" data-view="faction">Faction Overview</button>
       </div>
 
       <div class="main-layout">
@@ -403,19 +401,20 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Level</th>
-                  <th>Status</th>
-                  <th>❤️ Life</th>
-                  <th>⚡ Energy</th>
-                  <th>💊 Drug CD</th>
-                  <th>🏥 Med CD</th>
-                  <th>Hospital</th>
-                  <th>Last Seen</th>
+                  <th class="sortable" data-sort="level">Level<span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="status">Status<span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="life">️Life<span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="energy">Energy<span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="drug">Drug CD<span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="medical">Med CD<span class="sort-icon"></span></th>                  
+                  <th class="sortable" data-sort="booster">Boost CD<span class="sort-icon"></span></th>                  
+                  <th class="sortable" data-sort="hospital">Hospital <span class="sort-icon"></span></th>
+                  <th class="sortable" data-sort="lastseen">Last Seen<span class="sort-icon"></span></th>
                 </tr>
               </thead>
               <tbody id="faction-list">
                 <tr>
-                  <td colspan="9" class="loading">Loading faction data...</td>
+                  <td colspan="10" class="loading">Loading faction data...</td>
                 </tr>
               </tbody>
             </table>

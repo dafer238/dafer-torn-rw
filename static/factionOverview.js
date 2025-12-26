@@ -133,7 +133,7 @@ function renderFactionTable() {
     if (!factionList) return;
 
     if (factionState.profiles.length === 0) {
-        factionList.innerHTML = '<tr><td colspan="9" class="no-data">No faction members have used the tracker yet</td></tr>';
+        factionList.innerHTML = '<tr><td colspan="10" class="no-data">No faction members have used the tracker yet</td></tr>';
         return;
     }
 
@@ -145,6 +145,7 @@ function renderFactionTable() {
         
         const drugCd = profile.drug_cooldown || 0;
         const medCd = profile.medical_cooldown || 0;
+        const boosterCd = profile.booster_cooldown || 0;
         
         const hospitalTime = profile.hospital_timestamp > now ? profile.hospital_timestamp - now : 0;
         const hospitalStatus = hospitalTime > 0 ? formatTimeRemaining(hospitalTime) : '-';
@@ -152,8 +153,11 @@ function renderFactionTable() {
         const statusClass = getStatusClass(profile.status);
         const lastSeen = formatLastSeen(profile.last_action);
         
+        // Check if energy is stacked (>150)
+        const energyStacked = profile.energy_current > 150 ? '<span class="energy-stacked" title="Energy Stacked">⚡+</span>' : '';
+        
         return `
-            <tr>
+            <tr data-profile='${JSON.stringify(profile)}'>
                 <td>
                     <a href="https://www.torn.com/profiles.php?XID=${profile.player_id}" target="_blank">
                         ${profile.name} [${profile.player_id}]
@@ -172,9 +176,11 @@ function renderFactionTable() {
                         <div class="bar-fill-mini energy-bar-mini" style="width: ${energyPercent}%"></div>
                         <span class="bar-text-mini">${profile.energy_current}/${profile.energy_maximum}</span>
                     </div>
+                    ${energyStacked}
                 </td>
                 <td>${formatTimeRemaining(drugCd)}</td>
                 <td>${formatTimeRemaining(medCd)}</td>
+                <td>${formatTimeRemaining(boosterCd)}</td>
                 <td>${hospitalStatus}</td>
                 <td>${lastSeen}</td>
             </tr>
@@ -185,10 +191,111 @@ function renderFactionTable() {
 }
 
 /**
+ * Sort faction profiles
+ */
+function sortFactionProfiles(sortBy, sortDir) {
+    const now = Math.floor(Date.now() / 1000);
+    
+    factionState.profiles.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch(sortBy) {
+            case 'level':
+                aVal = a.level;
+                bVal = b.level;
+                break;
+            case 'status':
+                aVal = a.status;
+                bVal = b.status;
+                break;
+            case 'life':
+                aVal = a.life_maximum > 0 ? (a.life_current / a.life_maximum) : 0;
+                bVal = b.life_maximum > 0 ? (b.life_current / b.life_maximum) : 0;
+                break;
+            case 'energy':
+                aVal = a.energy_current;
+                bVal = b.energy_current;
+                break;
+            case 'drug':
+                aVal = a.drug_cooldown || 0;
+                bVal = b.drug_cooldown || 0;
+                break;
+            case 'medical':
+                aVal = a.medical_cooldown || 0;
+                bVal = b.medical_cooldown || 0;
+                break;
+            case 'booster':
+                aVal = a.booster_cooldown || 0;
+                bVal = b.booster_cooldown || 0;
+                break;
+            case 'hospital':
+                aVal = a.hospital_timestamp > now ? (a.hospital_timestamp - now) : 0;
+                bVal = b.hospital_timestamp > now ? (b.hospital_timestamp - now) : 0;
+                break;
+            case 'lastseen':
+                aVal = a.last_action;
+                bVal = b.last_action;
+                break;
+            default:
+                return 0;
+        }
+        
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    
+    renderFactionTable();
+}
+
+/**
+ * Setup faction table sorting
+ */
+function setupFactionSorting() {
+    let currentSort = 'lastseen';
+    let currentDir = 'desc';
+    
+    const table = document.getElementById('faction-table');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('th.sortable');
+    headers.forEach(header => {
+        header.addEventListener('click', () => {
+            const sortBy = header.dataset.sort;
+            
+            // Toggle direction if clicking same column
+            if (sortBy === currentSort) {
+                currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort = sortBy;
+                currentDir = 'asc';
+            }
+            
+            // Update sort icons
+            headers.forEach(h => {
+                const icon = h.querySelector('.sort-icon');
+                if (icon) {
+                    icon.textContent = '';
+                }
+            });
+            
+            const icon = header.querySelector('.sort-icon');
+            if (icon) {
+                icon.textContent = currentDir === 'asc' ? '▲' : '▼';
+            }
+            
+            sortFactionProfiles(currentSort, currentDir);
+        });
+    });
+}
+
+/**
  * Setup view toggle handlers
  */
 function setupViewToggle() {
-    const toggleBtns = document.querySelectorAll('.toggle-btn');
+    const toggleBtns = document.querySelectorAll('.toggle-btn-compact');
     const targetsView = document.getElementById('targets-view');
     const factionView = document.getElementById('faction-view');
     
@@ -213,6 +320,8 @@ function setupViewToggle() {
                 factionView.style.display = 'block';
                 // Fetch faction data
                 fetchFactionProfiles();
+                // Setup sorting if not already done
+                setupFactionSorting();
                 // Start faction polling if not already running
                 if (factionState.pollInterval === null) {
                     factionState.pollInterval = setInterval(fetchFactionProfiles, 30000); // 30 seconds
