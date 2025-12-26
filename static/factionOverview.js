@@ -11,6 +11,11 @@ let factionState = {
     isAccessible: false,
     lastUpdate: 0,
     pollInterval: null,
+    config: {
+        drug_cd_max: 28800,  // 8 hours default
+        med_cd_max: 21600,   // 6 hours default
+        booster_cd_max: 172800  // 48 hours default
+    }
 };
 
 /**
@@ -76,8 +81,33 @@ async function fetchFactionProfiles() {
         console.error('Error fetching faction profiles:', error);
         const factionList = document.getElementById('faction-list');
         if (factionList) {
-            factionList.innerHTML = '<tr><td colspan="9" class="error">Failed to load faction data</td></tr>';
+            factionList.innerHTML = '<tr><td colspan="10" class="error">Failed to load faction data</td></tr>';
         }
+    }
+}
+
+/**
+ * Fetch faction config (max CD values)
+ */
+async function fetchFactionConfig() {
+    const apiKey = localStorage.getItem('tornApiKey');
+    if (!apiKey) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/faction-config', {
+            headers: {
+                'X-API-Key': apiKey
+            }
+        });
+
+        if (response.ok) {
+            const config = await response.json();
+            factionState.config = config;
+        }
+    } catch (error) {
+        console.error('Error fetching faction config:', error);
     }
 }
 
@@ -85,7 +115,7 @@ async function fetchFactionProfiles() {
  * Format time remaining
  */
 function formatTimeRemaining(seconds) {
-    if (seconds <= 0) return '-';
+    if (seconds <= 0) return 'Ready';
     
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -147,14 +177,22 @@ function renderFactionTable() {
         const medCd = profile.medical_cooldown || 0;
         const boosterCd = profile.booster_cooldown || 0;
         
+        // Calculate CD bar percentages (100% = ready, 0% = just used)
+        const drugPercent = factionState.config.drug_cd_max > 0 ? Math.min(100, (drugCd / factionState.config.drug_cd_max * 100)).toFixed(0) : 0;
+        const medPercent = factionState.config.med_cd_max > 0 ? Math.min(100, (medCd / factionState.config.med_cd_max * 100)).toFixed(0) : 0;
+        const boosterPercent = factionState.config.booster_cd_max > 0 ? Math.min(100, (boosterCd / factionState.config.booster_cd_max * 100)).toFixed(0) : 0;
+        
         const hospitalTime = profile.hospital_timestamp > now ? profile.hospital_timestamp - now : 0;
-        const hospitalStatus = hospitalTime > 0 ? formatTimeRemaining(hospitalTime) : '-';
+        const hospitalDisplay = hospitalTime > 0 
+            ? `<a href="https://www.torn.com/hospitalview.php#/p=options&XID=${profile.player_id}" target="_blank" title="Revive ${profile.name}">${formatTimeRemaining(hospitalTime)}</a>` 
+            : '-';
         
         const statusClass = getStatusClass(profile.status);
-        const lastSeen = formatLastSeen(profile.last_action);
+        const lastSeenTime = formatLastSeen(profile.last_action);
+        const lastSeenDisplay = `<a href="https://www.torn.com/bounties.php#/p=add&XID=${profile.player_id}" target="_blank" title="Bounty ${profile.name}">${lastSeenTime}</a>`;
         
-        // Check if energy is stacked (>150)
-        const energyStacked = profile.energy_current > 150 ? '<span class="energy-stacked" title="Energy Stacked">⚡+</span>' : '';
+        // Check if energy is stacked (>150) - show inline
+        const energyStacked = profile.energy_current > 150 ? ' <span class="energy-stacked" title="Energy Stacked">⚡+</span>' : '';
         
         return `
             <tr data-profile='${JSON.stringify(profile)}'>
@@ -174,15 +212,29 @@ function renderFactionTable() {
                 <td>
                     <div class="bar-mini">
                         <div class="bar-fill-mini energy-bar-mini" style="width: ${energyPercent}%"></div>
-                        <span class="bar-text-mini">${profile.energy_current}/${profile.energy_maximum}</span>
+                        <span class="bar-text-mini">${profile.energy_current}/${profile.energy_maximum}${energyStacked}</span>
                     </div>
-                    ${energyStacked}
                 </td>
-                <td>${formatTimeRemaining(drugCd)}</td>
-                <td>${formatTimeRemaining(medCd)}</td>
-                <td>${formatTimeRemaining(boosterCd)}</td>
-                <td>${hospitalStatus}</td>
-                <td>${lastSeen}</td>
+                <td>
+                    <div class="bar-mini">
+                        <div class="bar-fill-mini drug-bar-mini" style="width: ${drugPercent}%"></div>
+                        <span class="bar-text-mini">${formatTimeRemaining(drugCd)}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="bar-mini">
+                        <div class="bar-fill-mini med-bar-mini" style="width: ${medPercent}%"></div>
+                        <span class="bar-text-mini">${formatTimeRemaining(medCd)}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="bar-mini">
+                        <div class="bar-fill-mini booster-bar-mini" style="width: ${boosterPercent}%"></div>
+                        <span class="bar-text-mini">${formatTimeRemaining(boosterCd)}</span>
+                    </div>
+                </td>
+                <td>${hospitalDisplay}</td>
+                <td>${lastSeenDisplay}</td>
             </tr>
         `;
     }).join('');
@@ -318,7 +370,8 @@ function setupViewToggle() {
             } else if (view === 'faction') {
                 targetsView.style.display = 'none';
                 factionView.style.display = 'block';
-                // Fetch faction data
+                // Fetch faction config and data
+                fetchFactionConfig();
                 fetchFactionProfiles();
                 // Setup sorting if not already done
                 setupFactionSorting();

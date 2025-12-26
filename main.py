@@ -117,6 +117,30 @@ def get_leadership_whitelist() -> list[int]:
         return []
 
 
+def get_drug_cd_max() -> int:
+    """Get max drug cooldown in minutes from environment."""
+    try:
+        return int(os.getenv("DRUG_CD_MAX", "480"))  # Default 8 hours
+    except ValueError:
+        return 480
+
+
+def get_med_cd_max() -> int:
+    """Get max medical cooldown in minutes from environment."""
+    try:
+        return int(os.getenv("MED_CD_MAX", "360"))  # Default 6 hours
+    except ValueError:
+        return 360
+
+
+def get_booster_cd_max() -> int:
+    """Get max booster cooldown in minutes from environment."""
+    try:
+        return int(os.getenv("BOOSTER_CD_MAX", "2880"))  # Default 48 hours
+    except ValueError:
+        return 2880
+
+
 async def validate_faction_membership(
     api_key: str, allowed_faction_id: int
 ) -> tuple[bool, str, int | None]:
@@ -587,6 +611,34 @@ async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_acc
     faction_overview_cache["timestamp"] = now_ms
     
     return profiles
+
+
+@app.get("/api/faction-config")
+async def get_faction_config(auth: tuple[str, int] = Depends(check_faction_access)):
+    """
+    Get faction overview configuration values (CD max times in seconds).
+    Only accessible to whitelisted leadership IDs.
+    """
+    x_api_key, player_id = auth
+
+    # Check if player is in leadership whitelist
+    whitelist = get_leadership_whitelist()
+    if not whitelist:
+        raise HTTPException(
+            status_code=403,
+            detail="Faction overview is disabled (no leadership whitelist configured)",
+        )
+
+    if player_id not in whitelist:
+        raise HTTPException(
+            status_code=403, detail="Access denied: You are not authorized to view faction config"
+        )
+
+    return {
+        "drug_cd_max": get_drug_cd_max() * 60,  # Convert minutes to seconds
+        "med_cd_max": get_med_cd_max() * 60,
+        "booster_cd_max": get_booster_cd_max() * 60,
+    }
 
 
 @app.post("/api/claim", response_model=ClaimResponse)
