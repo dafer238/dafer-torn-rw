@@ -838,7 +838,7 @@ header h1 {
     justify-content: center;
     width: 18px;
     height: 18px;
-    background: var(--accent);
+    background: #2196F3;
     border: none;
     border-radius: 3px;
     font-size: 0.7rem;

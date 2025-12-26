@@ -850,7 +850,11 @@ function renderTargets() {
     });
     
     document.querySelectorAll('.copy-target-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleCopyTarget(btn.dataset.targetId, btn.dataset.targetName));
+        btn.addEventListener('click', () => handleCopyTarget(
+            btn.dataset.targetId, 
+            btn.dataset.targetName, 
+            btn.dataset.onlineStatus
+        ));
     });
 }
 
@@ -932,7 +936,8 @@ function renderTargetRow(target) {
                     <a href="https://www.torn.com/loader.php?sid=attack&user2ID=${target.user_id}" 
                        target="_blank" rel="noopener" class="attack-link" title="Attack">⚔</a>
                     <button class="copy-target-btn" data-target-id="${target.user_id}" 
-                            data-target-name="${escapeHtml(target.name)}" title="Copy target info">📋</button>
+                            data-target-name="${escapeHtml(target.name)}" 
+                            data-online-status="${onlineClass}" title="Copy target info">📋</button>
                     ${badges}
                 </div>
             </td>
@@ -1029,14 +1034,22 @@ async function handleUnclaim(targetId) {
     fetchStatus(true);
 }
 
-function handleCopyTarget(targetId, targetName) {
+function handleCopyTarget(targetId, targetName, onlineStatus) {
     const profileUrl = `https://www.torn.com/profiles.php?XID=${targetId}`;
-    const attackUrl = `https://www.torn.com/loader.php?sid=attack&user2ID=${targetId}`;
+    const attackUrl = `https://www.torn.com/loader2.php?sid=getInAttack&user2ID=${targetId}`;
     
-    // Format: [name [id]](profile_url) - [Attack](attack_url)
-    const markdown = `[${targetName} [${targetId}]](${profileUrl}) - [Attack](${attackUrl})`;
+    // Determine circle color based on online status
+    let circle = '⚫'; // Black circle (offline/unknown)
+    if (onlineStatus === 'online') {
+        circle = '🟢'; // Green circle
+    } else if (onlineStatus === 'idle') {
+        circle = '🟡'; // Yellow circle
+    }
     
-    navigator.clipboard.writeText(markdown).then(() => {
+    // Format: ⚫ <a href="profile_url">Name's Profile [ID]</a> - <a href="attack_url">Attack</a>
+    const html = `${circle} <a href="${profileUrl}">${targetName}'s Profile [${targetId}]</a> - <a href="${attackUrl}">Attack</a>`;
+    
+    navigator.clipboard.writeText(html).then(() => {
         showToast('Target info copied!', 'success');
     }).catch(err => {
         console.error('Copy failed:', err);
