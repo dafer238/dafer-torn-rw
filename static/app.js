@@ -905,9 +905,22 @@ function renderTargetRow(target) {
     // Battle stats (YATA only - no fallback)
     const hasYata = target.yata_estimated_stats && target.yata_estimated_stats > 0;
     
-    const statsHtml = hasYata
-        ? `<span class="stats-value yata" title="YATA ML estimate">${target.yata_estimated_stats_formatted}</span>`
-        : '<span class="stats-value">-</span>';
+    let statsHtml;
+    if (hasYata) {
+        // Build type names
+        const buildTypes = ['Balanced', 'Offensive', 'Defensive'];
+        const buildType = buildTypes[target.yata_build_type] || 'Unknown';
+        
+        // Format timestamp
+        const estimateDate = target.yata_timestamp ? new Date(target.yata_timestamp * 1000).toLocaleString() : 'Unknown';
+        
+        // Create detailed tooltip
+        const tooltip = `YATA ML Estimate\\nType: ${buildType}\\nSkewness: ${(target.yata_skewness || 0).toFixed(1)}%\\nEstimate Date: ${estimateDate}`;
+        
+        statsHtml = `<span class="stats-value yata" title="${tooltip}">${target.yata_estimated_stats_formatted}</span>`;
+    } else {
+        statsHtml = '<span class="stats-value">-</span>';
+    }
     
     // Badges
     let badges = '';

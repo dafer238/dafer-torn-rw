@@ -38,10 +38,9 @@ async def fetch_battle_stats_estimates(
         Dict mapping player_id -> estimate data:
         {
             "total": int,           # Total battle stats estimate
-            "strength": int,        # Strength estimate
-            "defense": int,         # Defense estimate
-            "speed": int,           # Speed estimate
-            "dexterity": int,       # Dexterity estimate
+            "type": int,            # Build type (Offensive, Defensive, Balanced)
+            "skewness": float,      # Percentage showing how skewed the build is
+            "timestamp": int,       # Timestamp of the estimate
             "total_formatted": str, # Human readable total (e.g., "150M")
         }
 
@@ -56,65 +55,58 @@ async def fetch_battle_stats_estimates(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            # YATA targets estimate endpoint
-            # POST with target IDs
-            response = await client.post(
-                f"{YATA_API_BASE}/targets/estimate/",
-                params={"key": torn_api_key},
-                json={"targets": target_ids},
-            )
-
-            if response.status_code != 200:
-                raise YATAError(
-                    f"YATA API returned status {response.status_code}", code=response.status_code
-                )
-
-            data = response.json()
-
-            # Check for YATA errors
-            if "error" in data:
-                error_msg = data["error"].get("error", "Unknown YATA error")
-                error_code = data["error"].get("code")
-                raise YATAError(error_msg, code=error_code)
-
-            # Parse response - YATA returns dict of target_id -> stats
-            # Format may be: {"targets": {id: {...}, ...}}
-            targets_data = data.get("targets", {})
-
-            for target_id_str, estimate in targets_data.items():
+            # YATA battle stats endpoint: GET /api/v1/bs/<target_id>?key=<api_key>
+            # We need to make individual requests for each target
+            for target_id in target_ids:
                 try:
-                    target_id = int(target_id_str)
+                    response = await client.get(
+                        f"{YATA_API_BASE}/bs/{target_id}",
+                        params={"key": torn_api_key},
+                    )
 
-                    # YATA provides total battle stats estimate
-                    total = estimate.get("total", 0)
+                    if response.status_code != 200:
+                        print(f"YATA API returned status {response.status_code} for target {target_id}")
+                        continue
 
-                    # Individual stats (if available)
-                    strength = estimate.get("strength", 0)
-                    defense = estimate.get("defense", 0)
-                    speed = estimate.get("speed", 0)
-                    dexterity = estimate.get("dexterity", 0)
+                    data = response.json()
 
-                    # Format for display
-                    if total >= 1_000_000_000:
-                        formatted = f"{total / 1_000_000_000:.1f}B"
-                    elif total >= 1_000_000:
-                        formatted = f"{total / 1_000_000:.0f}M"
-                    elif total >= 1_000:
-                        formatted = f"{total / 1_000:.0f}K"
-                    else:
-                        formatted = str(total) if total else "?"
+                    # Check for YATA errors
+                    if "error" in data:
+                        error_msg = data["error"].get("error", "Unknown YATA error")
+                        print(f"YATA error for target {target_id}: {error_msg}")
+                        continue
 
-                    results[target_id] = {
-                        "total": total,
-                        "strength": strength,
-                        "defense": defense,
-                        "speed": speed,
-                        "dexterity": dexterity,
-                        "total_formatted": formatted,
-                    }
+                    # Parse response - YATA returns {"<target_id>": {"total": ..., "type": ..., "skewness": ..., "timestamp": ...}}
+                    target_id_str = str(target_id)
+                    if target_id_str in data:
+                        estimate = data[target_id_str]
+                        
+                        # YATA provides total battle stats estimate
+                        total = estimate.get("total", 0)
+                        build_type = estimate.get("type", 0)  # 0=Balanced, 1=Offensive, 2=Defensive
+                        skewness = estimate.get("skewness", 0.0)
+                        timestamp = estimate.get("timestamp", 0)
+
+                        # Format for display
+                        if total >= 1_000_000_000:
+                            formatted = f"{total / 1_000_000_000:.1f}B"
+                        elif total >= 1_000_000:
+                            formatted = f"{total / 1_000_000:.0f}M"
+                        elif total >= 1_000:
+                            formatted = f"{total / 1_000:.0f}K"
+                        else:
+                            formatted = str(total) if total else "?"
+
+                        results[target_id] = {
+                            "total": total,
+                            "type": build_type,
+                            "skewness": skewness,
+                            "timestamp": timestamp,
+                            "total_formatted": formatted,
+                        }
 
                 except (ValueError, KeyError) as e:
-                    print(f"Error parsing YATA estimate for {target_id_str}: {e}")
+                    print(f"Error parsing YATA estimate for {target_id}: {e}")
                     continue
 
             return results

@@ -307,10 +307,9 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             # Use cached estimate
             target.yata_estimated_stats = cached.get("total")
             target.yata_estimated_stats_formatted = cached.get("total_formatted")
-            target.yata_strength = cached.get("strength")
-            target.yata_defense = cached.get("defense")
-            target.yata_speed = cached.get("speed")
-            target.yata_dexterity = cached.get("dexterity")
+            target.yata_build_type = cached.get("type")
+            target.yata_skewness = cached.get("skewness")
+            target.yata_timestamp = cached.get("timestamp")
         else:
             targets_to_fetch.append(target.user_id)
 
@@ -327,10 +326,9 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
                     # Update target
                     target.yata_estimated_stats = estimate.get("total")
                     target.yata_estimated_stats_formatted = estimate.get("total_formatted")
-                    target.yata_strength = estimate.get("strength")
-                    target.yata_defense = estimate.get("defense")
-                    target.yata_speed = estimate.get("speed")
-                    target.yata_dexterity = estimate.get("dexterity")
+                    target.yata_build_type = estimate.get("type")
+                    target.yata_skewness = estimate.get("skewness")
+                    target.yata_timestamp = estimate.get("timestamp")
 
                     # Cache for 7 days (604800 seconds)
                     cache_key = f"yata_estimate_{target.user_id}"

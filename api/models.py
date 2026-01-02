@@ -64,10 +64,9 @@ class PlayerStatus(BaseModel):
     # YATA battle stats estimate (more accurate, from ML models)
     yata_estimated_stats: Optional[int] = None  # Total battle stats from YATA
     yata_estimated_stats_formatted: Optional[str] = None  # Human readable
-    yata_strength: Optional[int] = None  # Individual stat estimates
-    yata_defense: Optional[int] = None
-    yata_speed: Optional[int] = None
-    yata_dexterity: Optional[int] = None
+    yata_build_type: Optional[int] = None  # Build type: 0=Balanced, 1=Offensive, 2=Defensive
+    yata_skewness: Optional[float] = None  # Percentage showing how skewed the build is
+    yata_timestamp: Optional[int] = None  # Timestamp of the estimate
 
     # Claim info (from our system, not Torn)
     claimed_by: Optional[str] = None  # Username who claimed
