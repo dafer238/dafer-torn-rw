@@ -78,6 +78,7 @@ class TornClient:
         self.api_keys = api_keys
         self.current_key_index = 0
         self.client = httpx.AsyncClient(timeout=10.0)
+        self.api_calls_remaining = 100  # Track API calls remaining
 
         # Track per-key rate limiting
         self.key_requests: dict[str, list[float]] = {k: [] for k in api_keys}
@@ -158,6 +159,13 @@ class TornClient:
             response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
+            
+            # Update API calls remaining from response headers
+            if 'x-ratelimit-remaining' in response.headers:
+                try:
+                    self.api_calls_remaining = int(response.headers['x-ratelimit-remaining'])
+                except (ValueError, TypeError):
+                    pass
 
             # Check for Torn API errors
             if "error" in data:

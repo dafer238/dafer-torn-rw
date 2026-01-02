@@ -383,8 +383,8 @@ async def save_yata_estimate_to_redis(target_id: int, estimate: dict):
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
-    Uses Redis for shared persistence across instances.
-    Runs in background to avoid blocking page load.
+    Uses in-memory cache with Redis backup for persistence.
+    Non-blocking - fetches missing data in background.
     """
     if not targets:
         return
@@ -392,15 +392,14 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
     # Add this key to the pool
     await add_api_key_to_pool(api_key)
 
-    # Check cache (both in-memory and Redis)
+    # Check in-memory cache only (fast path)
     targets_to_fetch = []
     for target in targets:
-        # Check in-memory cache first (fastest)
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
 
         if cached:
-            # Use in-memory cached estimate
+            # Use cached estimate
             target.yata_estimated_stats = cached.get("total")
             target.yata_estimated_stats_formatted = cached.get("total_formatted")
             target.yata_build_type = cached.get("type")
@@ -408,21 +407,9 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_timestamp = cached.get("timestamp")
             target.yata_score = cached.get("score")
         else:
-            # Check Redis (shared across instances)
-            redis_data = await get_yata_estimate_from_redis(target.user_id)
-            if redis_data:
-                target.yata_estimated_stats = redis_data.get("total")
-                target.yata_estimated_stats_formatted = redis_data.get("total_formatted")
-                target.yata_build_type = redis_data.get("type")
-                target.yata_skewness = redis_data.get("skewness")
-                target.yata_timestamp = redis_data.get("timestamp")
-                target.yata_score = redis_data.get("score")
-                # Also cache in memory
-                yata_cache.set(cache_key, redis_data, ttl=604800)
-            else:
-                targets_to_fetch.append(target)
+            targets_to_fetch.append(target)
 
-    # Fetch missing estimates in background (don't block)
+    # Fetch missing estimates in background (non-blocking)
     if targets_to_fetch:
         asyncio.create_task(fetch_and_cache_yata_estimates(targets_to_fetch, api_key))
 
@@ -587,11 +574,7 @@ async def get_war_status(
         traveling = sum(1 for t in all_targets if t.traveling)
 
         # Get actual API calls remaining from client
-        api_calls_left = (
-            int(client.api_calls_remaining)
-            if hasattr(client, "api_calls_remaining") and client.api_calls_remaining is not None
-            else 100
-        )
+        api_calls_left = getattr(client, 'api_calls_remaining', 100)
 
         response = WarStatus(
             targets=all_targets,
@@ -961,10 +944,10 @@ async def get_leaderboards_endpoint(
     return await get_leaderboards(force_refresh=force_refresh)
 
 
-# TornStats cache (in-memory, keyed by faction ID) - DISABLED, using estimation instead
-# tornstats_cache: dict[int, dict] = {}
-# tornstats_cache_time: dict[int, float] = {}
-# TORNSTATS_CACHE_TTL = 300  # 5 minutes - stats don't change often
+# TornStats cache (in-memory, keyed by faction ID)
+tornstats_cache: dict[int, dict] = {}
+tornstats_cache_time: dict[int, float] = {}
+TORNSTATS_CACHE_TTL = 300  # 5 minutes - stats don't change often
 
 
 def estimate_battle_stats(
