@@ -396,10 +396,9 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
     # Add this key to the pool
     await add_api_key_to_pool(api_key)
 
-    # Check both in-memory cache AND Redis for all targets
-    targets_to_fetch = []
+    # First pass: check in-memory cache (fast, synchronous)
+    targets_needing_redis_check = []
     for target in targets:
-        # Check in-memory cache first (fastest)
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
 
@@ -412,9 +411,24 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_timestamp = cached.get("timestamp")
             target.yata_score = cached.get("score")
         else:
-            # Not in memory, check Redis (shared across instances)
-            redis_data = await get_yata_estimate_from_redis(target.user_id)
-            if redis_data:
+            targets_needing_redis_check.append(target)
+
+    # Second pass: check Redis for targets not in memory (parallel)
+    if targets_needing_redis_check:
+        try:
+            # Fetch all Redis data in parallel with timeout
+            redis_tasks = [
+                get_yata_estimate_from_redis(t.user_id) for t in targets_needing_redis_check
+            ]
+            redis_results = await asyncio.gather(*redis_tasks, return_exceptions=True)
+
+            targets_to_fetch = []
+            for target, redis_data in zip(targets_needing_redis_check, redis_results):
+                # Skip if Redis call failed
+                if isinstance(redis_data, Exception) or not redis_data:
+                    targets_to_fetch.append(target)
+                    continue
+
                 # Found in Redis, use it
                 target.yata_estimated_stats = redis_data.get("total")
                 target.yata_estimated_stats_formatted = redis_data.get("total_formatted")
@@ -423,25 +437,25 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
                 target.yata_timestamp = redis_data.get("timestamp")
                 target.yata_score = redis_data.get("score")
                 # Also cache in memory for this instance
+                cache_key = f"yata_estimate_{target.user_id}"
                 yata_cache.set(cache_key, redis_data, ttl=604800)
-            else:
-                # Not in cache or Redis, need to fetch from YATA
-                targets_to_fetch.append(target)
 
-    # Fetch missing estimates in BACKGROUND (non-blocking to avoid timeout)
-    if targets_to_fetch:
-        # Check if already being fetched
-        async with yata_fetch_lock:
-            new_targets_to_fetch = [
-                t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
-            ]
-            # Mark as being fetched
-            for t in new_targets_to_fetch:
-                yata_fetches_in_progress.add(t.user_id)
+            # Fetch missing estimates in BACKGROUND (non-blocking)
+            if targets_to_fetch:
+                async with yata_fetch_lock:
+                    new_targets_to_fetch = [
+                        t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
+                    ]
+                    # Mark as being fetched
+                    for t in new_targets_to_fetch:
+                        yata_fetches_in_progress.add(t.user_id)
 
-        if new_targets_to_fetch:
-            # Spawn background task (non-blocking)
-            asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
+                if new_targets_to_fetch:
+                    asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
+
+        except Exception as e:
+            print(f"Error in YATA enrichment: {e}")
+            # Continue without YATA data if there's an error
 
 
 async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
