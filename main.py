@@ -229,7 +229,7 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
     # Cache the validation
     if player_id:
         faction_validation_cache[player_id] = (allowed_faction_id, now)
-    
+
     # Passively collect user stats for leaderboards (throttled to once per hour per user)
     if player_id:
         last_update = stats_collection_cache.get(player_id, 0)
@@ -307,15 +307,16 @@ async def add_api_key_to_pool(api_key: str):
     """
     async with api_key_pool_lock:
         now = time.time()
-        
+
         # Clean up expired keys
-        expired_keys = [k for k, last_seen in api_key_last_seen.items() 
-                       if (now - last_seen) > API_KEY_POOL_TTL]
+        expired_keys = [
+            k for k, last_seen in api_key_last_seen.items() if (now - last_seen) > API_KEY_POOL_TTL
+        ]
         for k in expired_keys:
             if k in api_key_pool:
                 api_key_pool.remove(k)
             del api_key_last_seen[k]
-        
+
         # Add or update key
         api_key_last_seen[api_key] = now
         if api_key not in api_key_pool:
@@ -335,14 +336,14 @@ async def get_api_keys_for_yata(count: int) -> list[str]:
     async with api_key_pool_lock:
         if not api_key_pool:
             return []
-        
+
         # Rotate through pool to distribute load
         # Return keys in round-robin fashion
         result = []
         for i in range(min(count, len(api_key_pool))):
             idx = i % len(api_key_pool)
             result.append(api_key_pool[idx])
-        
+
         return result
 
 
@@ -351,24 +352,24 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
     Enrich target players with YATA battle stats estimates.
     Uses caching to avoid repeated API calls (cached for 7 days).
     Distributes YATA requests across multiple users' API keys to avoid saturation.
-    
+
     Args:
         targets: List of target players to enrich
         api_key: Torn API key (added to pool for future use)
     """
     if not targets:
         return
-    
+
     # Add this key to the pool for future requests
     await add_api_key_to_pool(api_key)
-    
+
     # Check which targets need YATA estimates
     targets_to_fetch = []
     for target in targets:
         # Check cache first
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
-        
+
         if cached:
             # Use cached estimate
             target.yata_estimated_stats = cached.get("total")
@@ -379,23 +380,23 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_score = cached.get("score")
         else:
             targets_to_fetch.append(target.user_id)
-    
+
     # Fetch estimates for targets not in cache
     if targets_to_fetch:
         try:
             # Get API keys from pool to distribute load
             available_keys = await get_api_keys_for_yata(len(targets_to_fetch))
-            
+
             # If no keys in pool yet, use the current one
             if not available_keys:
                 available_keys = [api_key]
-            
+
             # Distribute targets across available keys
             estimates = {}
             for i, target_id in enumerate(targets_to_fetch):
                 # Round-robin key selection
                 key_to_use = available_keys[i % len(available_keys)]
-                
+
                 try:
                     # Fetch estimate for this target
                     result = await fetch_battle_stats_estimates([target_id], key_to_use)
@@ -751,11 +752,11 @@ async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_acc
 
     # Get all stored faction profiles from Upstash
     profiles = await get_all_faction_profiles()
-    
+
     # Update cache
     faction_overview_cache["data"] = profiles
     faction_overview_cache["timestamp"] = now_ms
-    
+
     return profiles
 
 
@@ -902,18 +903,20 @@ async def get_leaderboards_endpoint(
     Leaderboards are cached and updated every hour.
     """
     api_key, player_id = auth
-    
+
     # On first request, ensure we have stats for this user
     # Check if we have any stats for this player
     from api.leaderboards import stats_cache, update_user_stats_from_api_call
-    
+
     if player_id not in stats_cache:
-        print(f"First leaderboard request for player {player_id}, collecting stats synchronously...")
+        print(
+            f"First leaderboard request for player {player_id}, collecting stats synchronously..."
+        )
         # Collect stats synchronously on first request
         await update_user_stats_from_api_call(api_key, player_id)
         # Force refresh to include the new data
         force_refresh = True
-    
+
     return await get_leaderboards(force_refresh=force_refresh)
 
 
