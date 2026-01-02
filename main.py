@@ -574,7 +574,7 @@ async def get_war_status(
         traveling = sum(1 for t in all_targets if t.traveling)
 
         # Get actual API calls remaining from client
-        api_calls_left = getattr(client, 'api_calls_remaining', 100)
+        api_calls_left = getattr(client, "api_calls_remaining", 100)
 
         response = WarStatus(
             targets=all_targets,
