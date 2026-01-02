@@ -56,12 +56,13 @@ async def fetch_battle_stats_estimates(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            # YATA battle stats endpoint: GET /api/v1/bs/<target_id>?key=<api_key>
+            # YATA battle stats endpoint: GET /api/v1/bs/<target_id>/?key=<api_key>
+            # Note: Trailing slash is required!
             # We need to make individual requests for each target
             for target_id in target_ids:
                 try:
                     response = await client.get(
-                        f"{YATA_API_BASE}/bs/{target_id}",
+                        f"{YATA_API_BASE}/bs/{target_id}/",
                         params={"key": torn_api_key},
                     )
 
