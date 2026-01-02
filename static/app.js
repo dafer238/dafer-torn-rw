@@ -913,8 +913,12 @@ function renderTargetRow(target) {
         // Format timestamp
         const estimateDate = target.yata_timestamp ? new Date(target.yata_timestamp * 1000).toLocaleString() : 'Unknown';
         
-        // Create detailed tooltip
-        const tooltip = `YATA ML Estimate\\nType: ${buildType}\\nSkewness: ${target.yata_skewness || 0}\\nScore: ${target.yata_score || 0}\\nEstimate Date: ${estimateDate}`;
+        // Create detailed tooltip with actual newlines (not escaped)
+        const tooltip = `YATA ML Estimate
+Type: ${buildType}
+Skewness: ${target.yata_skewness || 0}
+Score: ${target.yata_score || 0}
+Estimate Date: ${estimateDate}`;
         
         statsHtml = `<span class="stats-value yata" title="${tooltip}">${target.yata_estimated_stats_formatted}</span>`;
     } else {
