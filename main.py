@@ -290,6 +290,10 @@ API_KEY_POOL_MAX_SIZE = 20
 API_KEY_POOL_TTL = 3600
 api_key_last_seen: dict[str, float] = {}
 
+# Track YATA fetches in progress to prevent duplicates
+yata_fetches_in_progress: set[int] = set()
+yata_fetch_lock = asyncio.Lock()
+
 
 async def add_api_key_to_pool(api_key: str):
     """
@@ -410,12 +414,25 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             targets_to_fetch.append(target)
 
     # Fetch missing estimates in background (non-blocking)
+    # But only if not already being fetched
     if targets_to_fetch:
-        asyncio.create_task(fetch_and_cache_yata_estimates(targets_to_fetch, api_key))
+        # Filter out targets already being fetched
+        async with yata_fetch_lock:
+            new_targets_to_fetch = [
+                t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
+            ]
+            # Mark these targets as being fetched
+            for t in new_targets_to_fetch:
+                yata_fetches_in_progress.add(t.user_id)
+        
+        if new_targets_to_fetch:
+            asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
 
 
 async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """Background task to fetch YATA estimates."""
+    target_ids = [t.user_id for t in targets]
+    
     try:
         available_keys = await get_api_keys_for_yata(len(targets))
         if not available_keys:
@@ -442,6 +459,11 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
 
     except Exception as e:
         print(f"Background YATA fetch error: {e}")
+    finally:
+        # Remove targets from in-progress set
+        async with yata_fetch_lock:
+            for target_id in target_ids:
+                yata_fetches_in_progress.discard(target_id)
 
 
 # Create FastAPI app
