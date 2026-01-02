@@ -159,10 +159,12 @@ class TornClient:
             response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             # Update API calls remaining from response headers
             # Torn API uses 'X-RateLimit-Remaining' header
-            remaining = response.headers.get('X-RateLimit-Remaining') or response.headers.get('x-ratelimit-remaining')
+            remaining = response.headers.get("X-RateLimit-Remaining") or response.headers.get(
+                "x-ratelimit-remaining"
+            )
             if remaining:
                 try:
                     self.api_calls_remaining = int(remaining)
