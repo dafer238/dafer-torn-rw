@@ -61,6 +61,14 @@ class PlayerStatus(BaseModel):
     estimated_stats: int = 0  # Estimated total battle stats
     estimated_stats_formatted: str = ""  # Human readable (e.g., "150M")
 
+    # YATA battle stats estimate (more accurate, from ML models)
+    yata_estimated_stats: Optional[int] = None  # Total battle stats from YATA
+    yata_estimated_stats_formatted: Optional[str] = None  # Human readable
+    yata_strength: Optional[int] = None  # Individual stat estimates
+    yata_defense: Optional[int] = None
+    yata_speed: Optional[int] = None
+    yata_dexterity: Optional[int] = None
+
     # Claim info (from our system, not Torn)
     claimed_by: Optional[str] = None  # Username who claimed
     claimed_by_id: Optional[int] = None  # User ID who claimed

@@ -768,8 +768,8 @@ function filterTargets(targets) {
         if (state.filters.levelMin !== null && t.level < state.filters.levelMin) return false;
         if (state.filters.levelMax !== null && t.level > state.filters.levelMax) return false;
         
-        // Battle stats filter (using estimated stats)
-        const totalStats = t.estimated_stats || 0;
+        // Battle stats filter (prefer YATA, fallback to level-based)
+        const totalStats = t.yata_estimated_stats || t.estimated_stats || 0;
         if (totalStats < state.filters.statsMin) return false;
         if (totalStats > state.filters.statsMax) return false;
         
@@ -802,8 +802,8 @@ function sortTargets(targets) {
                 cmp = a.level - b.level;
                 break;
             case 'stats':
-                const aStats = a.estimated_stats || 0;
-                const bStats = b.estimated_stats || 0;
+                const aStats = a.yata_estimated_stats || a.estimated_stats || 0;
+                const bStats = b.yata_estimated_stats || b.estimated_stats || 0;
                 cmp = aStats - bStats;
                 break;
             case 'online':
@@ -902,11 +902,20 @@ function renderTargetRow(target) {
     const onlineClass = target.estimated_online || 'unknown';
     const onlineText = { online: 'Online', idle: 'Idle', offline: 'Offline', unknown: '?' }[onlineClass];
     
-    // Battle stats (estimated based on level)
+    // Battle stats (prefer YATA estimates, fallback to level-based)
+    const hasYata = target.yata_estimated_stats && target.yata_estimated_stats > 0;
     const hasStats = target.estimated_stats && target.estimated_stats > 0;
-    const statsHtml = hasStats 
-        ? `<span class="stats-value" title="Estimated based on level">${target.estimated_stats_formatted}</span>`
-        : '<span class="stats-value">-</span>';
+    
+    let statsHtml;
+    if (hasYata) {
+        // YATA estimates are more accurate
+        statsHtml = `<span class="stats-value yata" title="YATA ML estimate (click for breakdown)">${target.yata_estimated_stats_formatted}</span>`;
+    } else if (hasStats) {
+        // Fallback to level-based estimate
+        statsHtml = `<span class="stats-value" title="Estimated based on level">${target.estimated_stats_formatted}</span>`;
+    } else {
+        statsHtml = '<span class="stats-value">-</span>';
+    }
     
     // Badges
     let badges = '';

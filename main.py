@@ -33,6 +33,9 @@ from api import (
     TornAPIError,
     hospital_cache,
     TornClient,
+    fetch_battle_stats_estimates,
+    YATAError,
+    yata_cache,
 )
 from api.leaderboards import (
     get_leaderboards,
@@ -281,6 +284,63 @@ faction_overview_cache = {"data": None, "timestamp": 0}
 FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
 
 
+async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
+    """
+    Enrich target players with YATA battle stats estimates.
+    Uses caching to avoid repeated API calls (cached for 7 days).
+
+    Args:
+        targets: List of target players to enrich
+        api_key: Torn API key to use for YATA requests
+    """
+    if not targets:
+        return
+
+    # Check which targets need YATA estimates
+    targets_to_fetch = []
+    for target in targets:
+        # Check cache first
+        cache_key = f"yata_estimate_{target.user_id}"
+        cached = yata_cache.get(cache_key)
+
+        if cached:
+            # Use cached estimate
+            target.yata_estimated_stats = cached.get("total")
+            target.yata_estimated_stats_formatted = cached.get("total_formatted")
+            target.yata_strength = cached.get("strength")
+            target.yata_defense = cached.get("defense")
+            target.yata_speed = cached.get("speed")
+            target.yata_dexterity = cached.get("dexterity")
+        else:
+            targets_to_fetch.append(target.user_id)
+
+    # Fetch estimates for targets not in cache
+    if targets_to_fetch:
+        try:
+            estimates = await fetch_battle_stats_estimates(targets_to_fetch, api_key)
+
+            # Update targets and cache
+            for target in targets:
+                if target.user_id in estimates:
+                    estimate = estimates[target.user_id]
+
+                    # Update target
+                    target.yata_estimated_stats = estimate.get("total")
+                    target.yata_estimated_stats_formatted = estimate.get("total_formatted")
+                    target.yata_strength = estimate.get("strength")
+                    target.yata_defense = estimate.get("defense")
+                    target.yata_speed = estimate.get("speed")
+                    target.yata_dexterity = estimate.get("dexterity")
+
+                    # Cache for 7 days (604800 seconds)
+                    cache_key = f"yata_estimate_{target.user_id}"
+                    yata_cache.set(cache_key, estimate, ttl=604800)
+
+        except (YATAError, Exception) as e:
+            # YATA is optional - don't fail if it's unavailable
+            print(f"Warning: Failed to fetch YATA estimates: {e}")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Torn Ranked War Tracker",
@@ -366,6 +426,11 @@ async def get_war_status(
 
         # Update hospital states and reset claims for those who went back to hospital
         claim_mgr.update_hospital_states(all_targets)
+
+        # Fetch YATA battle stats estimates (cached for 7 days)
+        # Only fetch if we have targets
+        if all_targets:
+            await enrich_targets_with_yata_estimates(all_targets, x_api_key)
 
         # Get claims with caching to reduce Redis queries
         now_ms = time.time()

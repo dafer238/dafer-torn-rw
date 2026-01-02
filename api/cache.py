@@ -222,3 +222,7 @@ class RateLimiter:
 
 # Global rate limiter instance
 rate_limiter = RateLimiter(max_requests=90, window_seconds=60)  # Leave 10 buffer
+
+# YATA battle stats cache
+# Cache YATA estimates for 7 days (604800 seconds) since targets only change on new war week
+yata_cache = Cache(default_ttl=604800)

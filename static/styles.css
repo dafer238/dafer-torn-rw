@@ -610,6 +610,13 @@ header h1 {
     font-weight: 500;
 }
 
+/* YATA ML estimates - highlighted styling */
+.stats-cell .stats-value.yata {
+    color: #00d26a;
+    font-weight: 600;
+    cursor: help;
+}
+
 .stats-cell .stats-age {
     font-size: 0.65rem;
     color: var(--text-secondary);
