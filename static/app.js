@@ -955,7 +955,7 @@ function renderTargetRow(target) {
                 </div>
             </td>
             <td>${target.level}</td>
-            <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsHtml}</td>
+            <td class="stats-cell ${hasYata ? 'has-stats' : ''}">${statsHtml}</td>
             <td class="online-cell">
                 <span class="online-dot ${onlineClass}"></span>
                 <span class="online-text">${onlineText}</span>
