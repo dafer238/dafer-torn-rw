@@ -424,7 +424,7 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             # Mark these targets as being fetched
             for t in new_targets_to_fetch:
                 yata_fetches_in_progress.add(t.user_id)
-        
+
         if new_targets_to_fetch:
             asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
 
@@ -432,7 +432,7 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
 async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """Background task to fetch YATA estimates."""
     target_ids = [t.user_id for t in targets]
-    
+
     try:
         available_keys = await get_api_keys_for_yata(len(targets))
         if not available_keys:
