@@ -455,7 +455,9 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
                         yata_fetches_in_progress.add(t.user_id)
 
                 if new_targets_to_fetch:
-                    asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
+                    asyncio.create_task(
+                        fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key)
+                    )
 
         except Exception as e:
             print(f"Error in YATA enrichment: {e}")
