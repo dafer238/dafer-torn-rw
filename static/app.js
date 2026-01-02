@@ -71,8 +71,7 @@ function cacheElements() {
     elements.travelingCount = document.getElementById('traveling-count');
     elements.myClaimsCount = document.getElementById('my-claims-count');
     elements.configPanel = document.getElementById('config-panel');
-    elements.userId = document.getElementById('user-id');
-    elements.userName = document.getElementById('user-name');
+    // Removed userId and userName fields (now fetched from backend)
     elements.apiKey = document.getElementById('api-key');
     elements.toastContainer = document.getElementById('toast-container');
     elements.targetTable = document.getElementById('target-table');
@@ -105,32 +104,24 @@ function cacheElements() {
 }
 
 function loadConfig() {
-    state.userId = localStorage.getItem('tornUserId');
-    state.userName = localStorage.getItem('tornUserName');
     state.apiKey = localStorage.getItem('tornApiKey');
-    
-    if (state.userId) elements.userId.value = state.userId;
-    if (state.userName) elements.userName.value = state.userName;
     if (state.apiKey) elements.apiKey.value = state.apiKey;
-    
-    if (!state.userId || !state.userName || !state.apiKey) {
+    if (!state.apiKey) {
         elements.configPanel.classList.add('visible');
+    } else {
+        // Fetch user info from backend
+        fetchUserInfoFromApiKey(state.apiKey);
     }
 }
 
 function saveConfig() {
-    state.userId = elements.userId.value;
-    state.userName = elements.userName.value;
     state.apiKey = elements.apiKey.value;
-    
-    if (state.userId && state.userName && state.apiKey) {
-        localStorage.setItem('tornUserId', state.userId);
-        localStorage.setItem('tornUserName', state.userName);
+    if (state.apiKey) {
         localStorage.setItem('tornApiKey', state.apiKey);
-        elements.configPanel.classList.remove('visible');
-        showToast('Configuration saved!', 'success');
+        // Fetch user info from backend
+        fetchUserInfoFromApiKey(state.apiKey, true);
     } else {
-        showToast('Please enter API key, ID and name', 'error');
+        showToast('Please enter your API key', 'error');
     }
 }
 
@@ -971,7 +962,7 @@ function renderTargetRow(target) {
 
 async function handleClaim(targetId) {
     if (!state.userId || !state.userName) {
-        showToast('Please configure your user ID and name first', 'error');
+        showToast('Please configure your API key first', 'error');
         elements.configPanel.classList.add('visible');
         return;
     }
@@ -984,7 +975,6 @@ async function handleClaim(targetId) {
     }
     
     const tid = parseInt(targetId);
-    
     try {
         const response = await fetch(`${CONFIG.API_BASE}/claim`, {
             method: 'POST',
@@ -993,11 +983,36 @@ async function handleClaim(targetId) {
                 'X-API-Key': state.apiKey
             },
             body: JSON.stringify({
-                target_id: tid,
-                claimer_id: parseInt(state.userId),
-                claimer_name: state.userName
+                target_id: tid
+                // claimer_id and claimer_name will be filled in backend
             })
         });
+
+        // Fetch user info from backend using API key
+        async function fetchUserInfoFromApiKey(apiKey, closePanelOnSuccess = false) {
+            try {
+                const response = await fetch('/api/me', {
+                    headers: { 'X-API-Key': apiKey }
+                });
+                if (!response.ok) throw new Error('Invalid API key');
+                const data = await response.json();
+                if (data && data.player_id && data.name) {
+                    state.userId = data.player_id;
+                    state.userName = data.name;
+                    localStorage.setItem('tornUserId', state.userId);
+                    localStorage.setItem('tornUserName', state.userName);
+                    if (closePanelOnSuccess) {
+                        elements.configPanel.classList.remove('visible');
+                        showToast('Configuration saved!', 'success');
+                    }
+                } else {
+                    throw new Error('Could not fetch user info');
+                }
+            } catch (e) {
+                showToast('Invalid API key or unable to fetch user info', 'error');
+                elements.configPanel.classList.add('visible');
+            }
+        }
         
         const data = await response.json();
         

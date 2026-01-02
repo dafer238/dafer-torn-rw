@@ -666,11 +666,25 @@ async def claim_target(
         pass
 
     claim_mgr = get_claim_manager()
+    x_api_key, player_id = auth
+    # Fetch user name from Torn API (or cache)
+    user_name = None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.torn.com/user/",
+                params={"selections": "profile", "key": x_api_key},
+            )
+            data = response.json()
+            user_name = data.get("name", "Unknown")
+    except Exception:
+        user_name = "Unknown"
+
     success, message, claim = claim_mgr.claim(
         target_id=request.target_id,
         target_name=target_name,
-        claimer_id=request.claimer_id,
-        claimer_name=request.claimer_name,
+        claimer_id=player_id,
+        claimer_name=user_name,
     )
 
     return ClaimResponse(success=success, message=message, claim=claim)
