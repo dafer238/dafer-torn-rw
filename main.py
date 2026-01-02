@@ -357,7 +357,11 @@ async def get_yata_estimate_from_redis(target_id: int) -> Optional[dict]:
             )
             if response.status_code == 200:
                 data = response.json()
-                return data.get("result")
+                result = data.get("result")
+                # Redis returns a JSON string, need to parse it
+                if result and isinstance(result, str):
+                    return json.loads(result)
+                return result
     except Exception as e:
         print(f"Error reading YATA from Redis for {target_id}: {e}")
 
