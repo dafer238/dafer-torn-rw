@@ -387,9 +387,8 @@ async def save_yata_estimate_to_redis(target_id: int, estimate: dict):
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
-    Always checks Redis first (shared across all instances).
-    Only fetches from YATA API if not in Redis.
-    Fetches synchronously to ensure data is always shown.
+    Always checks Redis (shared storage) to prevent stats disappearing.
+    Fetches missing data in background to avoid blocking.
     """
     if not targets:
         return
@@ -397,7 +396,7 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
     # Add this key to the pool
     await add_api_key_to_pool(api_key)
 
-    # Check which targets need YATA estimates
+    # Check both in-memory cache AND Redis for all targets
     targets_to_fetch = []
     for target in targets:
         # Check in-memory cache first (fastest)
@@ -413,7 +412,7 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_timestamp = cached.get("timestamp")
             target.yata_score = cached.get("score")
         else:
-            # Check Redis (shared across all instances)
+            # Not in memory, check Redis (shared across instances)
             redis_data = await get_yata_estimate_from_redis(target.user_id)
             if redis_data:
                 # Found in Redis, use it
@@ -426,12 +425,12 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
                 # Also cache in memory for this instance
                 yata_cache.set(cache_key, redis_data, ttl=604800)
             else:
-                # Not in cache or Redis, need to fetch
+                # Not in cache or Redis, need to fetch from YATA
                 targets_to_fetch.append(target)
 
-    # Fetch missing estimates SYNCHRONOUSLY (blocking but ensures data is shown)
+    # Fetch missing estimates in BACKGROUND (non-blocking to avoid timeout)
     if targets_to_fetch:
-        # Check if already being fetched by another request
+        # Check if already being fetched
         async with yata_fetch_lock:
             new_targets_to_fetch = [
                 t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
@@ -441,43 +440,11 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
                 yata_fetches_in_progress.add(t.user_id)
 
         if new_targets_to_fetch:
-            try:
-                # Fetch synchronously
-                available_keys = await get_api_keys_for_yata(len(new_targets_to_fetch))
-                if not available_keys:
-                    available_keys = [api_key]
+            # Spawn background task (non-blocking)
+            asyncio.create_task(fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key))
 
-                for i, target in enumerate(new_targets_to_fetch):
-                    key_to_use = available_keys[i % len(available_keys)]
 
-                    try:
-                        result = await fetch_battle_stats_estimates([target.user_id], key_to_use)
-                        if target.user_id in result:
-                            estimate = result[target.user_id]
-
-                            # Update the target object immediately
-                            target.yata_estimated_stats = estimate.get("total")
-                            target.yata_estimated_stats_formatted = estimate.get("total_formatted")
-                            target.yata_build_type = estimate.get("type")
-                            target.yata_skewness = estimate.get("skewness")
-                            target.yata_timestamp = estimate.get("timestamp")
-                            target.yata_score = estimate.get("score")
-
-                            # Save to Redis (permanent storage)
-                            await save_yata_estimate_to_redis(target.user_id, estimate)
-
-                            # Cache in memory
-                            cache_key = f"yata_estimate_{target.user_id}"
-                            yata_cache.set(cache_key, estimate, ttl=604800)
-
-                    except Exception as e:
-                        print(f"Error fetching YATA for {target.user_id}: {e}")
-
-            finally:
-                # Remove from in-progress set
-                async with yata_fetch_lock:
-                    for t in new_targets_to_fetch:
-                        yata_fetches_in_progress.discard(t.user_id)
+async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """Background task to fetch YATA estimates."""
     target_ids = [t.user_id for t in targets]
 
