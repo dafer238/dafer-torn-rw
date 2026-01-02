@@ -283,26 +283,92 @@ STATS_COLLECTION_INTERVAL = 3600  # Only collect stats once per hour per user
 faction_overview_cache = {"data": None, "timestamp": 0}
 FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
 
+# API key pool for distributing YATA requests
+# Stores recently seen API keys to distribute load across all users
+api_key_pool: list[str] = []
+api_key_pool_lock = asyncio.Lock()
+API_KEY_POOL_MAX_SIZE = 20  # Keep track of last 20 unique keys
+API_KEY_POOL_TTL = 3600  # Keys expire from pool after 1 hour of inactivity
+api_key_last_seen: dict[str, float] = {}  # key -> last_seen_timestamp
+
+# API key pool for distributing YATA requests
+# Stores recently seen API keys to distribute load across all users
+api_key_pool: list[str] = []
+api_key_pool_lock = asyncio.Lock()
+API_KEY_POOL_MAX_SIZE = 20  # Keep track of last 20 unique keys
+API_KEY_POOL_TTL = 3600  # Keys expire from pool after 1 hour of inactivity
+api_key_last_seen: dict[str, float] = {}  # key -> last_seen_timestamp
+
+
+async def add_api_key_to_pool(api_key: str):
+    """
+    Add an API key to the pool for distributing YATA requests.
+    Keys are rotated to spread load across all active users.
+    """
+    async with api_key_pool_lock:
+        now = time.time()
+        
+        # Clean up expired keys
+        expired_keys = [k for k, last_seen in api_key_last_seen.items() 
+                       if (now - last_seen) > API_KEY_POOL_TTL]
+        for k in expired_keys:
+            if k in api_key_pool:
+                api_key_pool.remove(k)
+            del api_key_last_seen[k]
+        
+        # Add or update key
+        api_key_last_seen[api_key] = now
+        if api_key not in api_key_pool:
+            api_key_pool.append(api_key)
+            # Keep pool size manageable
+            if len(api_key_pool) > API_KEY_POOL_MAX_SIZE:
+                oldest_key = min(api_key_last_seen.keys(), key=lambda k: api_key_last_seen[k])
+                api_key_pool.remove(oldest_key)
+                del api_key_last_seen[oldest_key]
+
+
+async def get_api_keys_for_yata(count: int) -> list[str]:
+    """
+    Get API keys from the pool for making YATA requests.
+    Returns up to 'count' keys, rotating through the pool.
+    """
+    async with api_key_pool_lock:
+        if not api_key_pool:
+            return []
+        
+        # Rotate through pool to distribute load
+        # Return keys in round-robin fashion
+        result = []
+        for i in range(min(count, len(api_key_pool))):
+            idx = i % len(api_key_pool)
+            result.append(api_key_pool[idx])
+        
+        return result
+
 
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
     Uses caching to avoid repeated API calls (cached for 7 days).
-
+    Distributes YATA requests across multiple users' API keys to avoid saturation.
+    
     Args:
         targets: List of target players to enrich
-        api_key: Torn API key to use for YATA requests
+        api_key: Torn API key (added to pool for future use)
     """
     if not targets:
         return
-
+    
+    # Add this key to the pool for future requests
+    await add_api_key_to_pool(api_key)
+    
     # Check which targets need YATA estimates
     targets_to_fetch = []
     for target in targets:
         # Check cache first
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
-
+        
         if cached:
             # Use cached estimate
             target.yata_estimated_stats = cached.get("total")
@@ -313,15 +379,30 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_score = cached.get("score")
         else:
             targets_to_fetch.append(target.user_id)
-
+    
     # Fetch estimates for targets not in cache
     if targets_to_fetch:
         try:
-            estimates = await fetch_battle_stats_estimates(targets_to_fetch, api_key)
-
-            # Update targets and cache
-            for target in targets:
-                if target.user_id in estimates:
+            # Get API keys from pool to distribute load
+            available_keys = await get_api_keys_for_yata(len(targets_to_fetch))
+            
+            # If no keys in pool yet, use the current one
+            if not available_keys:
+                available_keys = [api_key]
+            
+            # Distribute targets across available keys
+            estimates = {}
+            for i, target_id in enumerate(targets_to_fetch):
+                # Round-robin key selection
+                key_to_use = available_keys[i % len(available_keys)]
+                
+                try:
+                    # Fetch estimate for this target
+                    result = await fetch_battle_stats_estimates([target_id], key_to_use)
+                    estimates.update(result)
+                except Exception as e:
+                    print(f"Error fetching YATA for target {target_id} with key rotation: {e}")
+                    continue
                     estimate = estimates[target.user_id]
 
                     # Update target
