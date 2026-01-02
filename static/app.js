@@ -23,6 +23,7 @@ let state = {
     userName: null,
     apiKey: null,
     maxClaimsPerUser: 3,
+    isUserInfoLoaded: false, // Track if user info is loaded
     filters: {
         hospital: 'all',
         claim: 'all',
@@ -55,8 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cacheElements();
     loadConfig();
     setupEventListeners();
-    startPolling();
     startTimers();
+    // startPolling() will be called after user info is loaded
 });
 
 function cacheElements() {
@@ -109,8 +110,10 @@ function loadConfig() {
     if (!state.apiKey) {
         elements.configPanel.classList.add('visible');
     } else {
-        // Fetch user info from backend
-        fetchUserInfoFromApiKey(state.apiKey);
+        // Fetch user info from backend, then start polling
+        fetchUserInfoFromApiKey(state.apiKey, false, () => {
+            startPolling();
+        });
     }
 }
 
@@ -118,8 +121,10 @@ function saveConfig() {
     state.apiKey = elements.apiKey.value;
     if (state.apiKey) {
         localStorage.setItem('tornApiKey', state.apiKey);
-        // Fetch user info from backend
-        fetchUserInfoFromApiKey(state.apiKey, true);
+        // Fetch user info from backend, then start polling
+        fetchUserInfoFromApiKey(state.apiKey, true, () => {
+            startPolling();
+        });
     } else {
         showToast('Please enter your API key', 'error');
     }
@@ -262,6 +267,7 @@ function updateSortIndicators() {
 }
 
 function startPolling() {
+    if (!state.isUserInfoLoaded) return; // Don't start polling until user info is loaded
     fetchStatus();
     fetchUserStatus();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
@@ -276,10 +282,12 @@ function startPolling() {
             if (state.userStatusInterval) clearInterval(state.userStatusInterval);
         } else {
             // Tab visible - restart polling
-            fetchStatus();
-            fetchUserStatus();
-            state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
-            state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+            if (state.isUserInfoLoaded) {
+                fetchStatus();
+                fetchUserStatus();
+                state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
+                state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+            }
         }
     });
 }
@@ -912,7 +920,9 @@ function renderTargetRow(target) {
         : 0;
     const atClaimLimit = myClaims >= state.maxClaimsPerUser;
     
-    if (!state.userId || !state.userName) {
+    if (!state.isUserInfoLoaded) {
+        claimButton = `<button class="btn btn-claim" disabled>Loading...</button>`;
+    } else if (!state.userId || !state.userName) {
         claimButton = `<button class="btn btn-claim" disabled>Config</button>`;
     } else if (isMyTarget) {
         claimButton = `<button class="btn btn-unclaim unclaim-btn" data-target-id="${target.user_id}">Release</button>`;
@@ -960,6 +970,36 @@ function renderTargetRow(target) {
     `;
 }
 
+// Fetch user info from backend using API key
+async function fetchUserInfoFromApiKey(apiKey, closePanelOnSuccess = false, onSuccess = null) {
+    state.isUserInfoLoaded = false;
+    try {
+        const response = await fetch('/api/me', {
+            headers: { 'X-API-Key': apiKey }
+        });
+        if (!response.ok) throw new Error('Invalid API key');
+        const data = await response.json();
+        if (data && data.player_id && data.name) {
+            state.userId = data.player_id;
+            state.userName = data.name;
+            localStorage.setItem('tornUserId', state.userId);
+            localStorage.setItem('tornUserName', state.userName);
+            state.isUserInfoLoaded = true;
+            if (closePanelOnSuccess) {
+                elements.configPanel.classList.remove('visible');
+                showToast('Configuration saved!', 'success');
+            }
+            if (typeof onSuccess === 'function') onSuccess();
+        } else {
+            throw new Error('Could not fetch user info');
+        }
+    } catch (e) {
+        showToast('Invalid API key or unable to fetch user info', 'error');
+        elements.configPanel.classList.add('visible');
+        state.isUserInfoLoaded = false;
+    }
+}
+
 async function handleClaim(targetId) {
     if (!state.userId || !state.userName) {
         showToast('Please configure your API key first', 'error');
@@ -987,32 +1027,6 @@ async function handleClaim(targetId) {
                 // claimer_id and claimer_name will be filled in backend
             })
         });
-
-        // Fetch user info from backend using API key
-        async function fetchUserInfoFromApiKey(apiKey, closePanelOnSuccess = false) {
-            try {
-                const response = await fetch('/api/me', {
-                    headers: { 'X-API-Key': apiKey }
-                });
-                if (!response.ok) throw new Error('Invalid API key');
-                const data = await response.json();
-                if (data && data.player_id && data.name) {
-                    state.userId = data.player_id;
-                    state.userName = data.name;
-                    localStorage.setItem('tornUserId', state.userId);
-                    localStorage.setItem('tornUserName', state.userName);
-                    if (closePanelOnSuccess) {
-                        elements.configPanel.classList.remove('visible');
-                        showToast('Configuration saved!', 'success');
-                    }
-                } else {
-                    throw new Error('Could not fetch user info');
-                }
-            } catch (e) {
-                showToast('Invalid API key or unable to fetch user info', 'error');
-                elements.configPanel.classList.add('visible');
-            }
-        }
         
         const data = await response.json();
         

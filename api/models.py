@@ -167,8 +167,8 @@ class ClaimRequest(BaseModel):
     """Request body for claiming a target."""
 
     target_id: int
-    claimer_name: str
-    claimer_id: int
+    claimer_name: Optional[str] = None  # Optional - filled from API key
+    claimer_id: Optional[int] = None  # Optional - filled from API key
 
 
 class ClaimResponse(BaseModel):
