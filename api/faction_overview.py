@@ -119,14 +119,16 @@ async def store_faction_member_profile(player_id: int, torn_api_data: dict):
             last_updated=int(time.time()),
         )
 
-        # Store in Vercel KV with 1 hour expiry (will refresh when user is active)
+        # Store in Vercel KV without expiration (faction members stay visible)
         key = f"faction_profile:{player_id}"
         token = os.getenv("KV_REST_API_TOKEN")
 
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.get(
-                f"{kv_url}/set/{key}/{profile.model_dump_json()}/ex/3600",
+            # POST instead of GET, and no /ex/3600 for permanent storage
+            await client.post(
+                f"{kv_url}/set/{key}",
                 headers={"Authorization": f"Bearer {token}"},
+                json=profile.model_dump(),
             )
 
     except Exception as e:

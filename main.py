@@ -12,7 +12,7 @@ import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -284,20 +284,11 @@ faction_overview_cache = {"data": None, "timestamp": 0}
 FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
 
 # API key pool for distributing YATA requests
-# Stores recently seen API keys to distribute load across all users
 api_key_pool: list[str] = []
 api_key_pool_lock = asyncio.Lock()
-API_KEY_POOL_MAX_SIZE = 20  # Keep track of last 20 unique keys
-API_KEY_POOL_TTL = 3600  # Keys expire from pool after 1 hour of inactivity
-api_key_last_seen: dict[str, float] = {}  # key -> last_seen_timestamp
-
-# API key pool for distributing YATA requests
-# Stores recently seen API keys to distribute load across all users
-api_key_pool: list[str] = []
-api_key_pool_lock = asyncio.Lock()
-API_KEY_POOL_MAX_SIZE = 20  # Keep track of last 20 unique keys
-API_KEY_POOL_TTL = 3600  # Keys expire from pool after 1 hour of inactivity
-api_key_last_seen: dict[str, float] = {}  # key -> last_seen_timestamp
+API_KEY_POOL_MAX_SIZE = 20
+API_KEY_POOL_TTL = 3600
+api_key_last_seen: dict[str, float] = {}
 
 
 async def add_api_key_to_pool(api_key: str):
@@ -347,31 +338,70 @@ async def get_api_keys_for_yata(count: int) -> list[str]:
         return result
 
 
+async def get_yata_estimate_from_redis(target_id: int) -> Optional[dict]:
+    """Get YATA estimate from Redis/KV."""
+    kv_url = os.getenv("KV_REST_API_URL")
+    kv_token = os.getenv("KV_REST_API_TOKEN")
+    
+    if not kv_url or not kv_token:
+        return None
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{kv_url}/get/yata_{target_id}",
+                headers={"Authorization": f"Bearer {kv_token}"}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("result")
+    except Exception as e:
+        print(f"Error reading YATA from Redis for {target_id}: {e}")
+    
+    return None
+
+
+async def save_yata_estimate_to_redis(target_id: int, estimate: dict):
+    """Save YATA estimate to Redis/KV without expiration."""
+    kv_url = os.getenv("KV_REST_API_URL")
+    kv_token = os.getenv("KV_REST_API_TOKEN")
+    
+    if not kv_url or not kv_token:
+        return
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Store without expiration (remove /ex/... part)
+            await client.post(
+                f"{kv_url}/set/yata_{target_id}",
+                headers={"Authorization": f"Bearer {kv_token}"},
+                json=estimate
+            )
+    except Exception as e:
+        print(f"Error saving YATA to Redis for {target_id}: {e}")
+
+
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
-    Uses caching to avoid repeated API calls (cached for 7 days).
-    Distributes YATA requests across multiple users' API keys to avoid saturation.
-
-    Args:
-        targets: List of target players to enrich
-        api_key: Torn API key (added to pool for future use)
+    Uses Redis for shared persistence across instances.
+    Runs in background to avoid blocking page load.
     """
     if not targets:
         return
 
-    # Add this key to the pool for future requests
+    # Add this key to the pool
     await add_api_key_to_pool(api_key)
 
-    # Check which targets need YATA estimates
+    # Check cache (both in-memory and Redis)
     targets_to_fetch = []
     for target in targets:
-        # Check cache first
+        # Check in-memory cache first (fastest)
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
 
         if cached:
-            # Use cached estimate
+            # Use in-memory cached estimate
             target.yata_estimated_stats = cached.get("total")
             target.yata_estimated_stats_formatted = cached.get("total_formatted")
             target.yata_build_type = cached.get("type")
@@ -379,48 +409,53 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_timestamp = cached.get("timestamp")
             target.yata_score = cached.get("score")
         else:
-            targets_to_fetch.append(target.user_id)
+            # Check Redis (shared across instances)
+            redis_data = await get_yata_estimate_from_redis(target.user_id)
+            if redis_data:
+                target.yata_estimated_stats = redis_data.get("total")
+                target.yata_estimated_stats_formatted = redis_data.get("total_formatted")
+                target.yata_build_type = redis_data.get("type")
+                target.yata_skewness = redis_data.get("skewness")
+                target.yata_timestamp = redis_data.get("timestamp")
+                target.yata_score = redis_data.get("score")
+                # Also cache in memory
+                yata_cache.set(cache_key, redis_data, ttl=604800)
+            else:
+                targets_to_fetch.append(target)
 
-    # Fetch estimates for targets not in cache
+    # Fetch missing estimates in background (don't block)
     if targets_to_fetch:
-        try:
-            # Get API keys from pool to distribute load
-            available_keys = await get_api_keys_for_yata(len(targets_to_fetch))
+        asyncio.create_task(fetch_and_cache_yata_estimates(targets_to_fetch, api_key))
 
-            # If no keys in pool yet, use the current one
-            if not available_keys:
-                available_keys = [api_key]
 
-            # Distribute targets across available keys
-            estimates = {}
-            for i, target_id in enumerate(targets_to_fetch):
-                # Round-robin key selection
-                key_to_use = available_keys[i % len(available_keys)]
+async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
+    """Background task to fetch YATA estimates."""
+    try:
+        available_keys = await get_api_keys_for_yata(len(targets))
+        if not available_keys:
+            available_keys = [api_key]
 
-                try:
-                    # Fetch estimate for this target
-                    result = await fetch_battle_stats_estimates([target_id], key_to_use)
-                    estimates.update(result)
-                except Exception as e:
-                    print(f"Error fetching YATA for target {target_id} with key rotation: {e}")
-                    continue
-                    estimate = estimates[target.user_id]
-
-                    # Update target
-                    target.yata_estimated_stats = estimate.get("total")
-                    target.yata_estimated_stats_formatted = estimate.get("total_formatted")
-                    target.yata_build_type = estimate.get("type")
-                    target.yata_skewness = estimate.get("skewness")
-                    target.yata_timestamp = estimate.get("timestamp")
-                    target.yata_score = estimate.get("score")
-
-                    # Cache for 7 days (604800 seconds)
+        for i, target in enumerate(targets):
+            key_to_use = available_keys[i % len(available_keys)]
+            
+            try:
+                result = await fetch_battle_stats_estimates([target.user_id], key_to_use)
+                if target.user_id in result:
+                    estimate = result[target.user_id]
+                    
+                    # Save to Redis (no expiration)
+                    await save_yata_estimate_to_redis(target.user_id, estimate)
+                    
+                    # Cache in memory
                     cache_key = f"yata_estimate_{target.user_id}"
                     yata_cache.set(cache_key, estimate, ttl=604800)
-
-        except (YATAError, Exception) as e:
-            # YATA is optional - don't fail if it's unavailable
-            print(f"Warning: Failed to fetch YATA estimates: {e}")
+                    
+            except Exception as e:
+                print(f"Error fetching YATA for {target.user_id}: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"Background YATA fetch error: {e}")
 
 
 # Create FastAPI app
@@ -551,6 +586,9 @@ async def get_war_status(
         in_hospital = sum(1 for t in all_targets if t.hospital_status != HospitalStatus.OUT)
         claimed = sum(1 for t in all_targets if t.claimed_by)
         traveling = sum(1 for t in all_targets if t.traveling)
+        
+        # Get actual API calls remaining from client
+        api_calls_left = int(client.api_calls_remaining) if hasattr(client, 'api_calls_remaining') and client.api_calls_remaining is not None else 100
 
         response = WarStatus(
             targets=all_targets,
@@ -564,7 +602,7 @@ async def get_war_status(
             last_updated=now,
             cache_age_seconds=0,
             next_refresh_in=2.0,
-            api_calls_remaining=100,  # Each user has their own limit
+            api_calls_remaining=api_calls_left,
         )
 
         return response
