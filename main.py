@@ -342,22 +342,21 @@ async def get_yata_estimate_from_redis(target_id: int) -> Optional[dict]:
     """Get YATA estimate from Redis/KV."""
     kv_url = os.getenv("KV_REST_API_URL")
     kv_token = os.getenv("KV_REST_API_TOKEN")
-    
+
     if not kv_url or not kv_token:
         return None
-    
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                f"{kv_url}/get/yata_{target_id}",
-                headers={"Authorization": f"Bearer {kv_token}"}
+                f"{kv_url}/get/yata_{target_id}", headers={"Authorization": f"Bearer {kv_token}"}
             )
             if response.status_code == 200:
                 data = response.json()
                 return data.get("result")
     except Exception as e:
         print(f"Error reading YATA from Redis for {target_id}: {e}")
-    
+
     return None
 
 
@@ -365,17 +364,17 @@ async def save_yata_estimate_to_redis(target_id: int, estimate: dict):
     """Save YATA estimate to Redis/KV without expiration."""
     kv_url = os.getenv("KV_REST_API_URL")
     kv_token = os.getenv("KV_REST_API_TOKEN")
-    
+
     if not kv_url or not kv_token:
         return
-    
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             # Store without expiration (remove /ex/... part)
             await client.post(
                 f"{kv_url}/set/yata_{target_id}",
                 headers={"Authorization": f"Bearer {kv_token}"},
-                json=estimate
+                json=estimate,
             )
     except Exception as e:
         print(f"Error saving YATA to Redis for {target_id}: {e}")
@@ -437,23 +436,23 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
 
         for i, target in enumerate(targets):
             key_to_use = available_keys[i % len(available_keys)]
-            
+
             try:
                 result = await fetch_battle_stats_estimates([target.user_id], key_to_use)
                 if target.user_id in result:
                     estimate = result[target.user_id]
-                    
+
                     # Save to Redis (no expiration)
                     await save_yata_estimate_to_redis(target.user_id, estimate)
-                    
+
                     # Cache in memory
                     cache_key = f"yata_estimate_{target.user_id}"
                     yata_cache.set(cache_key, estimate, ttl=604800)
-                    
+
             except Exception as e:
                 print(f"Error fetching YATA for {target.user_id}: {e}")
                 continue
-                
+
     except Exception as e:
         print(f"Background YATA fetch error: {e}")
 
@@ -586,9 +585,13 @@ async def get_war_status(
         in_hospital = sum(1 for t in all_targets if t.hospital_status != HospitalStatus.OUT)
         claimed = sum(1 for t in all_targets if t.claimed_by)
         traveling = sum(1 for t in all_targets if t.traveling)
-        
+
         # Get actual API calls remaining from client
-        api_calls_left = int(client.api_calls_remaining) if hasattr(client, 'api_calls_remaining') and client.api_calls_remaining is not None else 100
+        api_calls_left = (
+            int(client.api_calls_remaining)
+            if hasattr(client, "api_calls_remaining") and client.api_calls_remaining is not None
+            else 100
+        )
 
         response = WarStatus(
             targets=all_targets,
