@@ -161,9 +161,11 @@ class TornClient:
             data = response.json()
             
             # Update API calls remaining from response headers
-            if 'x-ratelimit-remaining' in response.headers:
+            # Torn API uses 'X-RateLimit-Remaining' header
+            remaining = response.headers.get('X-RateLimit-Remaining') or response.headers.get('x-ratelimit-remaining')
+            if remaining:
                 try:
-                    self.api_calls_remaining = int(response.headers['x-ratelimit-remaining'])
+                    self.api_calls_remaining = int(remaining)
                 except (ValueError, TypeError):
                     pass
 
