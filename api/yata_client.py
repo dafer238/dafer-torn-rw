@@ -38,9 +38,10 @@ async def fetch_battle_stats_estimates(
         Dict mapping player_id -> estimate data:
         {
             "total": int,           # Total battle stats estimate
-            "type": int,            # Build type (Offensive, Defensive, Balanced)
-            "skewness": float,      # Percentage showing how skewed the build is
+            "type": str,            # Build type: "Balanced", "Offensive", or "Defensive"
+            "skewness": int,        # How skewed the build is (0-100)
             "timestamp": int,       # Timestamp of the estimate
+            "score": int,           # YATA score
             "total_formatted": str, # Human readable total (e.g., "150M")
         }
 
@@ -76,16 +77,17 @@ async def fetch_battle_stats_estimates(
                         print(f"YATA error for target {target_id}: {error_msg}")
                         continue
 
-                    # Parse response - YATA returns {"<target_id>": {"total": ..., "type": ..., "skewness": ..., "timestamp": ...}}
+                    # Parse response - YATA returns {"<target_id>": {"total": ..., "type": ..., "skewness": ..., "timestamp": ..., "score": ..., "version": ...}}
                     target_id_str = str(target_id)
                     if target_id_str in data:
                         estimate = data[target_id_str]
                         
                         # YATA provides total battle stats estimate
                         total = estimate.get("total", 0)
-                        build_type = estimate.get("type", 0)  # 0=Balanced, 1=Offensive, 2=Defensive
-                        skewness = estimate.get("skewness", 0.0)
+                        build_type = estimate.get("type", "Unknown")  # String: "Balanced", "Offensive", or "Defensive"
+                        skewness = estimate.get("skewness", 0)  # Integer 0-100
                         timestamp = estimate.get("timestamp", 0)
+                        score = estimate.get("score", 0)
 
                         # Format for display
                         if total >= 1_000_000_000:
@@ -102,6 +104,7 @@ async def fetch_battle_stats_estimates(
                             "type": build_type,
                             "skewness": skewness,
                             "timestamp": timestamp,
+                            "score": score,
                             "total_formatted": formatted,
                         }
 

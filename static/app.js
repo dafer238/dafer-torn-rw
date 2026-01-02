@@ -907,15 +907,14 @@ function renderTargetRow(target) {
     
     let statsHtml;
     if (hasYata) {
-        // Build type names
-        const buildTypes = ['Balanced', 'Offensive', 'Defensive'];
-        const buildType = buildTypes[target.yata_build_type] || 'Unknown';
+        // Type is already a string from YATA API
+        const buildType = target.yata_build_type || 'Unknown';
         
         // Format timestamp
         const estimateDate = target.yata_timestamp ? new Date(target.yata_timestamp * 1000).toLocaleString() : 'Unknown';
         
         // Create detailed tooltip
-        const tooltip = `YATA ML Estimate\\nType: ${buildType}\\nSkewness: ${(target.yata_skewness || 0).toFixed(1)}%\\nEstimate Date: ${estimateDate}`;
+        const tooltip = `YATA ML Estimate\\nType: ${buildType}\\nSkewness: ${target.yata_skewness || 0}\\nScore: ${target.yata_score || 0}\\nEstimate Date: ${estimateDate}`;
         
         statsHtml = `<span class="stats-value yata" title="${tooltip}">${target.yata_estimated_stats_formatted}</span>`;
     } else {
