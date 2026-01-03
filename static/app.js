@@ -164,7 +164,7 @@ function saveConfig() {
             // Chain watch was just enabled - start it
             if (state.isUserInfoLoaded) {
                 checkChainWatch();
-                state.chainWatchInterval = setInterval(checkChainWatch, 30000);
+                state.chainWatchInterval = setInterval(checkChainWatch, 10000);
             }
         } else if (!state.chainWatch && oldChainWatch) {
             // Chain watch was just disabled - stop it
@@ -330,7 +330,7 @@ function startPolling() {
     // Start chain watch if enabled
     if (state.chainWatch) {
         checkChainWatch();
-        state.chainWatchInterval = setInterval(checkChainWatch, 30000); // Check every 30 seconds
+        state.chainWatchInterval = setInterval(checkChainWatch, 10000); // Check every 10 seconds
     }
     
     // Pause polling when tab is not visible to save CPU
@@ -349,7 +349,7 @@ function startPolling() {
                 state.userStatusInterval = setInterval(fetchUserStatus, 5000);
                 if (state.chainWatch) {
                     checkChainWatch();
-                    state.chainWatchInterval = setInterval(checkChainWatch, 30000);
+                    state.chainWatchInterval = setInterval(checkChainWatch, 10000);
                 }
             }
         }
