@@ -46,6 +46,13 @@ let state = {
     lastChainCount: 0,
     chainTimerSnapshot: 0,  // When we took the snapshot
     chainTimeoutSnapshot: 0, // Timeout value at snapshot
+    // Notification settings
+    notifyClaimExpiry: true,
+    chainWatch: false,
+    // Tracking for notifications
+    notifiedClaims: new Set(), // Track which claims we've already notified about
+    notified30SecClaims: new Set(), // Track 30s warnings
+    chainWatchCheckedTargets: new Set(), // Track which targets we've opened for chain watch
 };
 
 // DOM Elements
@@ -102,11 +109,30 @@ function cacheElements() {
     elements.chainAlertOverlay = document.getElementById('chain-alert-overlay');
     elements.chainAlertText = document.getElementById('chain-alert-text');
     elements.chainAlertCount = document.getElementById('chain-alert-count');
+    
+    // Settings
+    elements.notifyClaimExpiry = document.getElementById('notify-claim-expiry');
+    elements.chainWatch = document.getElementById('chain-watch');
 }
 
 function loadConfig() {
     state.apiKey = localStorage.getItem('tornApiKey');
     if (state.apiKey) elements.apiKey.value = state.apiKey;
+    
+    // Load notification settings
+    const notifyClaimExpiry = localStorage.getItem('notifyClaimExpiry');
+    state.notifyClaimExpiry = notifyClaimExpiry === null ? true : notifyClaimExpiry === 'true';
+    if (elements.notifyClaimExpiry) elements.notifyClaimExpiry.checked = state.notifyClaimExpiry;
+    
+    const chainWatch = localStorage.getItem('chainWatch');
+    state.chainWatch = chainWatch === 'true';
+    if (elements.chainWatch) elements.chainWatch.checked = state.chainWatch;
+    
+    // Request notification permission if needed
+    if (state.notifyClaimExpiry && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
     if (!state.apiKey) {
         elements.configPanel.classList.add('visible');
     } else {
@@ -119,8 +145,35 @@ function loadConfig() {
 
 function saveConfig() {
     state.apiKey = elements.apiKey.value;
+    const oldChainWatch = state.chainWatch;
+    state.notifyClaimExpiry = elements.notifyClaimExpiry.checked;
+    state.chainWatch = elements.chainWatch.checked;
+    
     if (state.apiKey) {
         localStorage.setItem('tornApiKey', state.apiKey);
+        localStorage.setItem('notifyClaimExpiry', state.notifyClaimExpiry);
+        localStorage.setItem('chainWatch', state.chainWatch);
+        
+        // Request notification permission if enabled
+        if (state.notifyClaimExpiry && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        
+        // Handle chain watch interval
+        if (state.chainWatch && !oldChainWatch) {
+            // Chain watch was just enabled - start it
+            if (state.isUserInfoLoaded) {
+                checkChainWatch();
+                state.chainWatchInterval = setInterval(checkChainWatch, 30000);
+            }
+        } else if (!state.chainWatch && oldChainWatch) {
+            // Chain watch was just disabled - stop it
+            if (state.chainWatchInterval) {
+                clearInterval(state.chainWatchInterval);
+                state.chainWatchInterval = null;
+            }
+        }
+        
         // Fetch user info from backend, then start polling
         fetchUserInfoFromApiKey(state.apiKey, true, () => {
             startPolling();
@@ -274,12 +327,19 @@ function startPolling() {
     // Poll user status every 15 seconds (reduced to stay within Vercel limits)
     state.userStatusInterval = setInterval(fetchUserStatus, 10000);
     
+    // Start chain watch if enabled
+    if (state.chainWatch) {
+        checkChainWatch();
+        state.chainWatchInterval = setInterval(checkChainWatch, 30000); // Check every 30 seconds
+    }
+    
     // Pause polling when tab is not visible to save CPU
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
             // Tab hidden - clear intervals
             if (state.pollInterval) clearInterval(state.pollInterval);
             if (state.userStatusInterval) clearInterval(state.userStatusInterval);
+            if (state.chainWatchInterval) clearInterval(state.chainWatchInterval);
         } else {
             // Tab visible - restart polling
             if (state.isUserInfoLoaded) {
@@ -287,9 +347,60 @@ function startPolling() {
                 fetchUserStatus();
                 state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
                 state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+                if (state.chainWatch) {
+                    checkChainWatch();
+                    state.chainWatchInterval = setInterval(checkChainWatch, 30000);
+                }
             }
         }
     });
+}
+
+async function checkChainWatch() {
+    if (!state.chainWatch || !state.apiKey) return;
+    
+    try {
+        // Fetch user's target list from Torn API
+        const response = await fetch(`https://api.torn.com/user/?selections=targets&key=${state.apiKey}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data.targets) return;
+        
+        // Check each target for panic/chain notes (case-insensitive)
+        const panicRegex = /panic|chain/i;
+        
+        for (const [targetId, targetData] of Object.entries(data.targets)) {
+            const note = targetData.note || '';
+            
+            // Check if note contains panic or chain (case-insensitive)
+            if (panicRegex.test(note) && !state.chainWatchCheckedTargets.has(targetId)) {
+                // Mark as checked so we don't open again
+                state.chainWatchCheckedTargets.add(targetId);
+                
+                // Open attack page
+                const attackUrl = `https://www.torn.com/loader.php?sid=attack&user2ID=${targetId}`;
+                window.open(attackUrl, '_blank');
+                
+                // Show toast notification
+                showToast(`Chain Watch: Opening attack on ${targetData.name || 'target'}`, 'success');
+                
+                // Small delay between opening multiple tabs
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        
+        // Clean up checked targets that are no longer in the list
+        const currentTargetIds = new Set(Object.keys(data.targets));
+        state.chainWatchCheckedTargets.forEach(id => {
+            if (!currentTargetIds.has(id)) {
+                state.chainWatchCheckedTargets.delete(id);
+            }
+        });
+        
+    } catch (error) {
+        console.error('Chain watch error:', error);
+    }
 }
 
 function startTimers() {
@@ -298,6 +409,7 @@ function startTimers() {
         updateTimers();
         updateUserCooldowns();
         updateChainTimer();
+        checkClaimNotifications();
     }, 1000);
 }
 
@@ -721,6 +833,79 @@ function updateTimers() {
             }
         }
     });
+}
+
+function checkClaimNotifications() {
+    if (!state.notifyClaimExpiry || !state.userId) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Check my claimed targets
+    const myClaims = state.targets.filter(t => t.claimed_by_id === parseInt(state.userId));
+    
+    // Track current claim IDs to clean up old notifications
+    const currentClaimIds = new Set(myClaims.map(t => t.user_id));
+    
+    // Clean up notification tracking for claims that no longer exist
+    state.notifiedClaims.forEach(id => {
+        if (!currentClaimIds.has(id)) {
+            state.notifiedClaims.delete(id);
+            state.notified30SecClaims.delete(id);
+        }
+    });
+    
+    myClaims.forEach(target => {
+        const targetId = target.user_id;
+        const targetName = target.name;
+        const claimExpires = target.claim_expires || 0;
+        const hospitalUntil = target.hospital_until || 0;
+        const hospitalRemaining = hospitalUntil > 0 ? Math.max(0, hospitalUntil - now) : 0;
+        const isInHospital = target.hospital_status !== 'out' && hospitalRemaining > 0;
+        
+        // Check for claim expiry (5 minutes expired)
+        if (claimExpires > 0 && now >= claimExpires && !state.notifiedClaims.has(targetId)) {
+            state.notifiedClaims.add(targetId);
+            sendNotification(
+                '⏱️ Claim Expired',
+                `Your claim on ${targetName} has expired (5 minutes)`,
+                `https://www.torn.com/loader.php?sid=attack&user2ID=${targetId}`
+            );
+        }
+        
+        // Check for 30 second warning (only if in hospital)
+        if (isInHospital && hospitalRemaining <= 30 && hospitalRemaining > 0 
+            && !state.notified30SecClaims.has(targetId)) {
+            state.notified30SecClaims.add(targetId);
+            sendNotification(
+                '⚠️ Target Almost Out',
+                `${targetName} leaves hospital in ${hospitalRemaining}s`,
+                `https://www.torn.com/loader.php?sid=attack&user2ID=${targetId}`
+            );
+        }
+    });
+}
+
+function sendNotification(title, body, url = null) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    
+    const notification = new Notification(title, {
+        body: body,
+        icon: '/static/favicon.svg',
+        badge: '/static/favicon.svg',
+        requireInteraction: false,
+        tag: body // Prevent duplicate notifications
+    });
+    
+    if (url) {
+        notification.onclick = function() {
+            window.open(url, '_blank');
+            notification.close();
+        };
+    }
+    
+    // Auto-close after 10 seconds
+    setTimeout(() => notification.close(), 10000);
 }
 
 function formatTime(seconds) {
