@@ -370,11 +370,32 @@ async function checkChainWatch() {
         // Check each target for panic/chain notes (case-insensitive)
         const panicRegex = /panic|chain/i;
         
+        // Find all targets with matching notes that haven't been checked yet
+        const matchingTargets = [];
         for (const [targetId, targetData] of Object.entries(data.targets)) {
             const note = targetData.note || '';
             
             // Check if note contains panic or chain (case-insensitive)
             if (panicRegex.test(note) && !state.chainWatchCheckedTargets.has(targetId)) {
+                matchingTargets.push({ id: targetId, data: targetData });
+            }
+        }
+        
+        // Find the first target that is NOT in hospital
+        for (const { id: targetId, data: targetData } of matchingTargets) {
+            // Check if target is attackable by looking at our loaded targets
+            const targetInfo = state.targets.find(t => t.user_id === parseInt(targetId));
+            
+            // Target is attackable if: out of hospital AND not traveling AND not in jail
+            const isInJail = targetInfo && targetInfo.travel_destination && 
+                           targetInfo.travel_destination.toLowerCase().includes('jail');
+            
+            const isAttackable = targetInfo && 
+                                 targetInfo.hospital_status === 'out' && 
+                                 !targetInfo.traveling &&
+                                 !isInJail;
+            
+            if (isAttackable) {
                 // Mark as checked so we don't open again
                 state.chainWatchCheckedTargets.add(targetId);
                 
@@ -385,8 +406,8 @@ async function checkChainWatch() {
                 // Show toast notification
                 showToast(`Chain Watch: Opening attack on ${targetData.name || 'target'}`, 'success');
                 
-                // Small delay between opening multiple tabs
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Stop after opening the first one
+                break;
             }
         }
         
