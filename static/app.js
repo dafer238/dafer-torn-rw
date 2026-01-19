@@ -1069,7 +1069,8 @@ function renderTargets() {
         btn.addEventListener('click', () => handleCopyTarget(
             btn.dataset.targetId, 
             btn.dataset.targetName, 
-            btn.dataset.onlineStatus
+            btn.dataset.onlineStatus,
+            btn.dataset.stats
         ));
     });
 }
@@ -1172,7 +1173,8 @@ Estimate Date: ${estimateDate}`;
                        target="_blank" rel="noopener" class="attack-link" title="Attack">⚔</a>
                     <button class="copy-target-btn" data-target-id="${target.user_id}" 
                             data-target-name="${escapeHtml(target.name)}" 
-                            data-online-status="${onlineClass}" title="Copy target info">📋</button>
+                            data-online-status="${onlineClass}"
+                            data-stats="${hasYata ? target.yata_estimated_stats_formatted : '-'}" title="Copy target info">📋</button>
                     ${badges}
                 </div>
             </td>
@@ -1297,7 +1299,7 @@ async function handleUnclaim(targetId) {
     fetchStatus(true);
 }
 
-function handleCopyTarget(targetId, targetName, onlineStatus) {
+function handleCopyTarget(targetId, targetName, onlineStatus, stats) {
     const profileUrl = `https://www.torn.com/profiles.php?XID=${targetId}`;
     const attackUrl = `https://www.torn.com/loader2.php?sid=getInAttack&user2ID=${targetId}`;
     
@@ -1309,8 +1311,8 @@ function handleCopyTarget(targetId, targetName, onlineStatus) {
         circle = '🟡'; // Yellow circle
     }
     
-    // Format: ⚫ <a href="profile_url">Name [ID]</a> - <a href="attack_url">Attack</a>
-    const html = `${circle} <a href="${profileUrl}">${targetName} [${targetId}]</a> - <a href="${attackUrl}">Attack</a>`;
+    // Format: ⚫ <a href="profile_url">Name (stats)</a> - <a href="attack_url">Attack</a>
+    const html = `${circle} <a href="${profileUrl}">${targetName} (${stats})</a> - <a href="${attackUrl}">Attack</a>`;
     
     navigator.clipboard.writeText(html).then(() => {
         showToast('Target info copied!', 'success');
