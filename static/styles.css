@@ -1024,113 +1024,355 @@ header h1 {
 }
 
 @media (max-width: 600px) {
+    body {
+            font-size: 14px;
+        }
     .container {
-        padding: 6px;
+        padding: 8px;
     }
     
+        /* Header improvements */
     header {
-        flex-direction: column;
+        flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px 0;
+        }
+        
+        header h1 {
+            font-size: 1.4rem;
+            width: 100%;
+        }
+        
+        .header-stats {
+            flex-wrap: wrap;
+            gap: 10px;
+            width: 100%;
+            font-size: 0.85rem;
+        }
+        
+        /* User status bar - make it fully responsive */
+        .user-status-bar {
+            gap: 8px;
+            padding: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .user-status-item {
+            flex-basis: calc(50% - 4px);
         gap: 6px;
+        padding: 6px;
+        }
+        
+        .user-status-label {
+            font-size: 0.75rem;
+            min-width: 30px;
+        }
+        
+        .bar-container {
+            width: 100%;
+            min-width: 80px;
+            height: 16px;
+        }
+        
+        .bar-text {
+            font-size: 0.75rem;
+        }
+        
+        .cooldown-item {
+            flex-basis: calc(33.33% - 5px);
+            min-width: 70px;
+            padding: 6px;
+        }
+        
+        .cooldown-label {
+            font-size: 0.7rem;
+        }
+        
+        .cooldown-value {
+            font-size: 0.85rem;
+        }
+        
+        .chain-item {
+            flex-basis: 100%;
+            padding: 6px 12px;
+        }
+        
+        /* View toggle on mobile */
+        .view-toggle-compact {
+            flex-basis: 100%;
+            justify-content: center;
+            padding: 4px;
+        }
+        
+        .toggle-btn-compact {
+            flex: 1;
+            padding: 6px 12px;
+            font-size: 0.75rem;
     }
     
     /* Make stats bar wrap on mobile */
     .stats-bar {
         flex-wrap: wrap;
-        gap: 4px;
-        padding: 4px;
+        gap: 6px;
+            padding: 6px;
     }
     
     .stat {
-        padding: 6px 8px;
-        min-width: calc(50% - 2px);  /* 2 columns on mobile */
+        padding: 8px 12px;
+            min-width: calc(50% - 3px);
         border-right: none;
         border: 1px solid var(--border-color);
         border-radius: 4px;
     }
     
-    /* Reduce table padding */
+        .stat-value {
+            font-size: 1.2rem;
+        }
+    
+        .stat-label {
+            font-size: 0.7rem;
+        }
+    
+        /* Config panel mobile improvements */
+        .config-panel {
+            padding: 10px;
+        }
+    
+        .config-form {
+            flex-direction: column;
+            gap: 10px;
+        }
+    
+        .form-group {
+            width: 100%;
+        }
+    
+        .form-group input {
+            width: 100%;
+            font-size: 14px;
+            padding: 8px;
+        }
+    
+        /* Filter section mobile improvements */
+        .filter-section {
+            gap: 8px;
+        }
+    
+        .filter-group {
+            flex-wrap: wrap;
+            width: 100%;
+            gap: 6px;
+        }
+    
+        .filter-label {
+            width: 100%;
+            font-size: 0.75rem;
+            margin-bottom: 2px;
+        }
+    
+        .filter-btn {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            flex: 1;
+            min-width: 70px;
+        }
+    
+        /* Range filters mobile */
+        .range-filters {
+            gap: 10px;
+            padding-top: 8px;
+            margin-top: 6px;
+        }
+    
+        .range-filter {
+            flex-wrap: wrap;
+            width: 100%;
+            gap: 6px;
+        }
+    
+        .range-input {
+            width: 70px;
+            font-size: 0.8rem;
+            padding: 6px 8px;
+        }
+    
+        .range-select {
+            width: 100%;
+            font-size: 0.8rem;
+            padding: 6px 8px;
+        }
+    
+        .action-controls {
+            width: 100%;
+            gap: 8px;
+        }
+    
+        .action-controls .btn {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+    
+        /* Table improvements - KEEP STATS COLUMN VISIBLE */
+        .target-table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -8px;
+            padding: 0 8px;
+        }
+    
+        .target-table {
+            font-size: 0.75rem;
+            min-width: 100%;
+        }
     .target-table th,
     .target-table td {
-        padding: 4px 6px;
-        font-size: 0.7rem;
+        padding: 6px 8px;
+            font-size: 0.75rem;
     }
     
-    /* Hide less important columns on mobile */
-    .target-table th:nth-child(4),  /* Stats */
+        /* IMPORTANT: Keep Stats column visible on mobile */
+        .target-table th:nth-child(4),
     .target-table td:nth-child(4) {
-        display: none;
+        display: table-cell !important;
+            min-width: 90px;
     }
     
-    /* Make status text shorter */
-    .online-text {
-        display: none;
+        /* Stats cell mobile styling */
+        .stats-cell {
+            font-size: 0.7rem !important;
+            white-space: normal !important;
+            line-height: 1.3;
     }
     
-    .online-cell {
-        font-size: 0.7rem;
+        .stats-cell .stats-value {
+            display: block;
+            font-size: 0.75rem !important;
+            font-weight: 600;
     }
     
-    /* Reason column: show only icon or shortened text */
-    .reason-cell {
-        max-width: 80px;
-        font-size: 0.65rem;
+        .stats-cell .stats-value.yata {
+            color: #00d26a !important;
+            font-weight: 700 !important;
     }
     
-    /* Make action buttons smaller */
-    .btn-small {
-        padding: 2px 4px;
-        font-size: 0.65rem;
+        .stats-cell .stats-age {
+            display: block;
+            font-size: 0.65rem !important;
+            margin-top: 2px;
     }
     
     /* Timer cell */
     .timer-cell {
-        font-size: 0.7rem;
-        min-width: 50px;
+        font-size: 0.75rem;
+            min-width: 60px;
+            font-weight: 600;
     }
     
     /* Name cell */
     .name-cell {
+        font-size: 0.75rem;
+            min-width: 120px;
+        }
+        
+        .player-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .player-links a,
+        .player-links button {
         font-size: 0.7rem;
+        padding: 2px 6px;
+        }
+        
+        .profile-link {
+            flex: 1 1 100%;
+            margin-bottom: 2px;
+        }
+        
+        /* Online status - keep text on mobile */
+        .online-cell {
+            font-size: 0.75rem;
+            min-width: 70px;
+        }
+        
+        .online-dot {
+            width: 8px;
+            height: 8px;
     }
     
-    .player-links a {
-        font-size: 0.65rem;
+        .online-text {
+            display: inline !important;
+            font-size: 0.7rem;
+        }
+    
+        /* Reason column */
+        .reason-cell {
+            max-width: 100px;
+            font-size: 0.7rem;
+            white-space: normal;
+            line-height: 1.2;
+        }
+    
+        /* Claim column */
+        .claim-cell {
+            font-size: 0.7rem;
+            min-width: 60px;
+        }
+    
+        /* Make action buttons more touch-friendly */
+        .btn-small {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            min-height: 32px;
+            touch-action: manipulation;
+        }
+    
+        /* Level column */
+        .target-table th:nth-child(3),
+        .target-table td:nth-child(3) {
+            min-width: 40px;
+            text-align: center;
     }
 }
 
 /* Extra small screens (very small smartphones) */
 @media (max-width: 400px) {
-    .stat {
-        padding: 4px 6px;
-        min-width: calc(50% - 2px);
+    body {
+            font-size: 13px;
+    }
+
+        .container {
+            padding: 6px;
+    }
+
+        header h1 {
+            font-size: 1.2rem;
+    }
+
+        .header-stats {
+            font-size: 0.75rem;
+            gap: 8px;
     }
     
-    .stat-value {
-        font-size: 0.9rem;
+        /* Stats bar - 2 columns on very small screens */
+        .stat {
+            padding: 6px 10px;
+            min-width: calc(50% - 3px);
     }
     
-    .stat-label {
-        font-size: 0.6rem;
+        .stat-value {
+            font-size: 1rem;
     }
     
-    /* Make table even more compact */
-    .target-table th,
-    .target-table td {
-        padding: 3px 4px;
-        font-size: 0.65rem;
-    }
+        .stat-label {
+            font-size: 0.65rem;
+        }
     
-    /* Hide claim column on very small screens */
-    .target-table th:nth-child(7),  /* Claimed */
-    .target-table td:nth-child(7) {
-        display: none;
-    }
-    
-    .reason-cell {
-        max-width: 60px;
-    }
-    
-    /* Make user status bar wrap properly on mobile */
+        /* User status bar */
     .user-status-bar {
         gap: 6px;
         padding: 6px;
@@ -1139,59 +1381,163 @@ header h1 {
     .user-status-item {
         gap: 4px;
         flex-basis: calc(50% - 3px);
+        padding: 5px;
     }
     
     .user-status-label {
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         min-width: 28px;
     }
     
     .bar-container {
-        width: 70px;
+        min-width: 70px;
         height: 14px;
     }
     
+        .bar-text {
+            font-size: 0.7rem;
+        }
+    
+        .cooldown-item {
+            flex-basis: calc(33.33% - 4px);
+            min-width: 65px;
+            padding: 5px;
+        }
     .cooldown-value,
     .status-state {
-        font-size: 0.7rem;
-    }
-    
-    .cooldown-label {
-        font-size: 0.6rem;
-    }
-    
-    /* Make chain display smaller */
-    .chain-item {
-        padding: 3px 8px;
-        gap: 1px;
-    }
-    
-    .chain-label {
-        font-size: 0.6rem;
-    }
-    
-    .chain-value {
         font-size: 0.75rem;
     }
     
-    .chain-timer {
+    .cooldown-label {
         font-size: 0.65rem;
+    }
+    
+        /* Chain display */
+    .chain-item {
+        padding: 5px 10px;
+            gap: 2px;
+    }
+    
+    .chain-label {
+        font-size: 0.65rem;
+    }
+    
+        .chain-count {
+            font-size: 0.9rem;
+    }
+    
+    .chain-timer {
+        font-size: 0.7rem;
     }
     
     /* View toggle buttons */
     .toggle-btn-compact {
-        padding: 3px 8px;
+        padding: 5px 10px;
+            font-size: 0.7rem;
+        }
+        
+        /* Filter buttons */
+        .filter-btn {
+            padding: 5px 10px;
+            font-size: 0.75rem;
+            min-width: 60px;
+        }
+        
+        .range-input {
+            width: 60px;
+            font-size: 0.75rem;
+            padding: 5px 6px;
+        }
+        
+        .range-select {
+            font-size: 0.75rem;
+            padding: 5px 6px;
+        }
+        
+        .action-controls .btn {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+        
+        /* Table adjustments */
+        .target-table {
+            font-size: 0.7rem;
+        }
+        
+        .target-table th,
+        .target-table td {
+            padding: 5px 6px;
+            font-size: 0.7rem;
+        }
+        
+        /* KEEP Stats column visible even on very small screens */
+        .target-table th:nth-child(4),
+        .target-table td:nth-child(4) {
+            display: table-cell !important;
+            min-width: 85px;
+        }
+        
+        .stats-cell {
+            font-size: 0.65rem !important;
+        }
+        
+        .stats-cell .stats-value {
+            font-size: 0.7rem !important;
+        }
+        
+        .stats-cell .stats-age {
+            font-size: 0.6rem !important;
+        }
+        
+        .timer-cell {
+            min-width: 55px;
+            font-size: 0.7rem;
+        }
+        
+        .name-cell {
+            min-width: 110px;
+            font-size: 0.7rem;
+        }
+        
+        .player-links a,
+        .player-links button {
+            font-size: 0.65rem;
+            padding: 2px 5px;
+        }
+        
+        .online-cell {
+            min-width: 65px;
+            font-size: 0.7rem;
+        }
+        
+        .online-text {
+            font-size: 0.65rem;
+        }
+        
+        .reason-cell {
+            max-width: 90px;
+            font-size: 0.65rem;
+        }
+        
+        .claim-cell {
         font-size: 0.65rem;
+        min-width: 55px;
+        }
+        
+        .btn-small {
+            padding: 5px 8px;
+            font-size: 0.7rem;
+            min-height: 30px;
     }
     
     /* Config panel on mobile */
-    .config-form {
-        flex-direction: column;
+        .config-form {
         gap: 8px;
     }
     
     .form-group input {
-        width: 100%;
+        font-size: 13px;
+            padding: 6px;
     }
 }
 
@@ -1614,27 +1960,77 @@ header h1 {
 /* Mobile responsive styles for faction table */
 @media (max-width: 600px) {
     .faction-overview-container {
+        padding: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -8px;
+        }
+        
+        .faction-table {
+            font-size: 0.75rem;
+            min-width: 100%;
+        }
+        
+        .faction-table th,
+        .faction-table td {
+            padding: 6px 8px;
+            font-size: 0.75rem;
+        }
+        
+        .bar-mini {
+            width: 80px;
+            height: 16px;
+        }
+        
+        .bar-text-mini {
+            font-size: 0.7rem;
+        }
+        
+        /* Keep all columns visible but adjust spacing */
+        .faction-table td,
+        .faction-table th {
+            white-space: nowrap;
+        }
+        
+        /* Name column */
+        .faction-table td:first-child {
+            min-width: 100px;
+            font-size: 0.75rem;
+        }
+        
+        /* Status icons and cooldowns */
+        .faction-table td {
+            font-size: 0.7rem;
+        }
+        }
+        
+        @media (max-width: 400px) {
+            .faction-overview-container {
         padding: 6px;
     }
     
     .faction-table {
-        font-size: 0.65rem;
-        min-width: 700px; /* Allow horizontal scroll */
+        font-size: 0.7rem;
     }
     
     .faction-table th,
     .faction-table td {
-        padding: 4px 6px;
-        font-size: 0.65rem;
+        padding: 5px 6px;
+            font-size: 0.7rem;
     }
     
     .bar-mini {
         width: 70px;
-        height: 16px;
+        height: 14px;
     }
     
     .bar-text-mini {
-        font-size: 9px;
+        font-size: 0.65rem;
+        }
+        
+        .faction-table td:first-child {
+            min-width: 90px;
+            font-size: 0.7rem;
     }
 }
 
