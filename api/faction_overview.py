@@ -3,6 +3,12 @@ Faction Overview API
 
 Stores and retrieves faction member profile data for leadership view.
 Only accessible to whitelisted leadership IDs.
+
+Storage priority:
+1. Vercel KV / Redis (if configured) - for Vercel deployments
+2. File-based storage (if self-hosted) - for Orange Pi / single instance
+
+Self-hosted deployments automatically use file storage for persistence.
 """
 
 import os
@@ -10,6 +16,7 @@ import time
 from typing import List
 
 from pydantic import BaseModel
+from .file_storage import get_file_storage, is_self_hosted
 
 
 class FactionMemberProfile(BaseModel):
@@ -51,45 +58,33 @@ class FactionMemberProfile(BaseModel):
 
 async def store_faction_member_profile(player_id: int, torn_api_data: dict):
     """
-    Store faction member profile data in Redis.
-    Called whenever a user makes an API request with their key.
+    Store faction member profile data.
+    Uses Redis if configured, otherwise file storage for self-hosted.
 
     Args:
         player_id: The player's Torn ID
         torn_api_data: Full response from Torn API user endpoint
     """
-    # Check if KV is available
-    kv_url = os.getenv("KV_REST_API_URL")
-    if not kv_url:
-        print("Warning: KV not configured, cannot store faction profiles")
-        return
-
     try:
-        import httpx
-
-        # Extract status info
+        # Extract profile data
         status_data = torn_api_data.get("status", {})
         status_state = status_data.get("state", "Unknown")
         status_until = status_data.get("until", 0)
 
-        # Extract life/energy/nerve/happy
         life_data = torn_api_data.get("life", {})
         energy_data = torn_api_data.get("energy", {})
         nerve_data = torn_api_data.get("nerve", {})
         happy_data = torn_api_data.get("happy", {})
 
-        # Extract cooldowns
         cooldowns = torn_api_data.get("cooldowns", {})
         drug_cd = cooldowns.get("drug", 0)
         medical_cd = cooldowns.get("medical", 0)
         booster_cd = cooldowns.get("booster", 0)
 
-        # Extract hospital/jail
         states = torn_api_data.get("states", {})
         hospital_ts = states.get("hospital_timestamp", 0) or 0
         jail_ts = states.get("jail_timestamp", 0) or 0
 
-        # Extract travel
         travel = torn_api_data.get("travel", {})
         travel_dest = travel.get("destination", "")
         travel_ts = travel.get("timestamp", 0) or 0
@@ -119,20 +114,30 @@ async def store_faction_member_profile(player_id: int, torn_api_data: dict):
             last_updated=int(time.time()),
         )
 
-        # Store in Vercel KV without expiration (faction members stay visible)
-        key = f"faction_profile:{player_id}"
-        token = os.getenv("KV_REST_API_TOKEN")
+        # Choose storage backend
+        if is_self_hosted():
+            # File-based storage for self-hosted
+            storage = get_file_storage()
+            storage.set("faction_profiles", str(player_id), profile.model_dump())
+        else:
+            # Vercel KV for cloud deployment
+            kv_url = os.getenv("KV_REST_API_URL")
+            if not kv_url:
+                print("Warning: KV not configured, cannot store faction profiles")
+                return
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            # POST instead of GET, and no /ex/3600 for permanent storage
-            await client.post(
-                f"{kv_url}/set/{key}",
-                headers={"Authorization": f"Bearer {token}"},
-                json=profile.model_dump(),
-            )
+            import httpx
+            key = f"faction_profile:{player_id}"
+            token = os.getenv("KV_REST_API_TOKEN")
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{kv_url}/set/{key}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json=profile.model_dump(),
+                )
 
     except Exception as e:
-        # Don't fail the main request if profile storage fails
         print(f"Error storing faction profile for {player_id}: {e}")
 
 
@@ -141,47 +146,66 @@ async def get_all_faction_profiles() -> List[FactionMemberProfile]:
     Get all stored faction member profiles.
     Returns list of profiles sorted by last action (most recent first).
     """
-    kv_url = os.getenv("KV_REST_API_URL")
-    if not kv_url:
-        return []
-
     try:
-        import httpx
-
-        token = os.getenv("KV_REST_API_TOKEN")
-
-        # Get all profile keys
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{kv_url}/keys/faction_profile:*", headers={"Authorization": f"Bearer {token}"}
-            )
-
-            if response.status_code != 200:
-                return []
-
-            keys = response.json().get("result", [])
-            if not keys:
-                return []
-
-            # Fetch all profiles
+        if is_self_hosted():
+            # File-based storage for self-hosted
+            storage = get_file_storage()
+            all_data = storage.get_all("faction_profiles")
+            
             profiles = []
-            for key in keys:
+            for profile_data in all_data.values():
                 try:
-                    resp = await client.get(
-                        f"{kv_url}/get/{key}", headers={"Authorization": f"Bearer {token}"}
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json().get("result")
-                        if data:
-                            profile = FactionMemberProfile.model_validate_json(data)
-                            profiles.append(profile)
+                    profile = FactionMemberProfile(**profile_data)
+                    profiles.append(profile)
                 except Exception as e:
-                    print(f"Error parsing profile {key}: {e}")
-
+                    print(f"Error parsing profile: {e}")
+            
             # Sort by last action (most recent first)
             profiles.sort(key=lambda p: p.last_action, reverse=True)
-
             return profiles
+        
+        else:
+            # Vercel KV for cloud deployment
+            kv_url = os.getenv("KV_REST_API_URL")
+            if not kv_url:
+                return []
+
+            import httpx
+
+            token = os.getenv("KV_REST_API_TOKEN")
+
+            # Get all profile keys
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{kv_url}/keys/faction_profile:*", headers={"Authorization": f"Bearer {token}"}
+                )
+
+                if response.status_code != 200:
+                    return []
+
+                keys = response.json().get("result", [])
+                if not keys:
+                    return []
+
+                # Fetch all profiles
+                profiles = []
+                for key in keys:
+                    try:
+                        resp = await client.get(
+                            f"{kv_url}/get/{key}", headers={"Authorization": f"Bearer {token}"}
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json().get("result")
+                            if data:
+                                profile = FactionMemberProfile.model_validate_json(data)
+                                profiles.append(profile)
+                    except Exception as e:
+                        print(f"Error parsing profile {key}: {e}")
+
+                # Sort by last action (most recent first)
+                profiles.sort(key=lambda p: p.last_action, reverse=True)
+
+                return profiles
 
     except Exception as e:
         print(f"Error fetching faction profiles: {e}")

@@ -38,6 +38,7 @@ from api import (
     YATAError,
     yata_cache,
 )
+from api.file_storage import get_file_storage, is_self_hosted
 from api.leaderboards import (
     get_leaderboards,
     update_user_stats_from_api_call,
@@ -288,7 +289,7 @@ FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
 api_key_pool: list[str] = []
 api_key_pool_lock = asyncio.Lock()
 API_KEY_POOL_MAX_SIZE = 20
-API_KEY_POOL_TTL = 3600
+API_KEY_POOL_TTL = 7200
 api_key_last_seen: dict[str, float] = {}
 
 # Track YATA fetches in progress to prevent duplicates
@@ -369,24 +370,33 @@ async def get_yata_estimate_from_redis(target_id: int) -> Optional[dict]:
     return None
 
 
-async def save_yata_estimate_to_redis(target_id: int, estimate: dict):
-    """Save YATA estimate to Redis/KV without expiration."""
-    kv_url = os.getenv("KV_REST_API_URL")
-    kv_token = os.getenv("KV_REST_API_TOKEN")
+async def save_yata_estimate_to_storage(target_id: int, estimate: dict):
+    """
+    Save YATA estimate to persistent storage.
+    Uses Redis if configured, otherwise file storage for self-hosted.
+    """
+    if is_self_hosted():
+        # File-based storage for self-hosted (no expiration)
+        storage = get_file_storage()
+        storage.set("yata_cache", str(target_id), estimate)
+    else:
+        # Redis/KV for cloud deployment
+        kv_url = os.getenv("KV_REST_API_URL")
+        kv_token = os.getenv("KV_REST_API_TOKEN")
 
-    if not kv_url or not kv_token:
-        return
+        if not kv_url or not kv_token:
+            return
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            # Store without expiration (remove /ex/... part)
-            await client.post(
-                f"{kv_url}/set/yata_{target_id}",
-                headers={"Authorization": f"Bearer {kv_token}"},
-                json=estimate,
-            )
-    except Exception as e:
-        print(f"Error saving YATA to Redis for {target_id}: {e}")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Store without expiration (remove /ex/... part)
+                await client.post(
+                    f"{kv_url}/set/yata_{target_id}",
+                    headers={"Authorization": f"Bearer {kv_token}"},
+                    json=estimate,
+                )
+        except Exception as e:
+            print(f"Error saving YATA to storage for {target_id}: {e}")
 
 
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
@@ -482,8 +492,8 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
                 if target.user_id in result:
                     estimate = result[target.user_id]
 
-                    # Save to Redis (no expiration)
-                    await save_yata_estimate_to_redis(target.user_id, estimate)
+                    # Save to persistent storage (no expiration)
+                    await save_yata_estimate_to_storage(target.user_id, estimate)
 
                     # Cache in memory
                     cache_key = f"yata_estimate_{target.user_id}"

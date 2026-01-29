@@ -1,9 +1,12 @@
 """
 Torn Ranked War Tracker - Hit Claim Manager
 
-Simple in-memory claim storage.
-Note: On Vercel serverless, claims may not sync perfectly across instances.
-For production use, configure Vercel KV for shared state.
+Storage priority:
+1. Vercel KV / Redis (if configured) - for Vercel deployments
+2. File-based storage (if self-hosted) - for Orange Pi / single instance
+3. In-memory (fallback) - volatile, lost on restart
+
+Self-hosted deployments automatically use file storage for persistence.
 """
 
 import os
@@ -11,6 +14,7 @@ import time
 from typing import Optional
 
 from .models import HitClaim
+from .file_storage import get_file_storage, is_self_hosted
 
 
 class ClaimManager:
@@ -25,14 +29,16 @@ class ClaimManager:
         self._claims: dict[int, HitClaim] = {}
         self._prev_hospital_state: dict[int, bool] = {}
         
-        # Check for Vercel KV
-        kv_url = os.getenv("KV_REST_API_URL")
-        if kv_url:
-            print("ClaimManager: Vercel KV detected - using shared storage")
+        # Determine storage backend
+        if not is_self_hosted():
+            print("ClaimManager: Vercel KV detected - using Redis")
+            self._storage_mode = "kv"
             self._use_kv = True
         else:
-            print("ClaimManager: Using in-memory storage")
+            print("ClaimManager: Self-hosted mode - using file storage")
+            self._storage_mode = "file"
             self._use_kv = False
+            self._file_storage = get_file_storage()
 
     def _kv_get(self, key: str):
         """Get value from Vercel KV."""
@@ -135,8 +141,10 @@ class ClaimManager:
             was_in_hospital = self._prev_hospital_state.get(target_id, False)
             
             if not was_in_hospital and is_in_hospital:
-                if self._use_kv:
+                if self._storage_mode == "kv":
                     self._kv_del(f"claim:{target_id}")
+                elif self._storage_mode == "file":
+                    self._file_storage.delete("claims", str(target_id))
                 elif target_id in self._claims:
                     del self._claims[target_id]
                 reset_claims.append(target_id)
@@ -155,7 +163,7 @@ class ClaimManager:
         """Attempt to claim a target."""
         now = int(time.time())
         exp = expiry if expiry else self.default_expiry
-        expiry_time = now + exp
+        expiry_tistorage_mode == "kv"ow + exp
 
         if self._use_kv:
             # Check existing
@@ -191,26 +199,84 @@ class ClaimManager:
             )
             self._kv_set(f"claim:{target_id}", self._claim_to_str(claim), ex=exp)
             return True, "Target claimed successfully", claim
-        else:
-            # In-memory
-            self._cleanup_expired()
-            existing = self._claims.get(target_id)
+        elif self._storage_mode == "file":
+            # File-based storage (self-hosted)
+            existing_data = self._file_storage.get("claims", str(target_id))
+            existing = HitClaim(**existing_data) if existing_data else None
             
-            if existing:
+            if existing and existing.expires_at > now:
                 if existing.claimed_by_id == claimer_id:
                     existing.expires_at = expiry_time
+                    self._file_storage.set("claims", str(target_id), existing.model_dump(), ex=exp)
                     return True, "Claim extended", existing
                 else:
                     remaining = existing.expires_at - now
                     return False, f"Already claimed by {existing.claimed_by} ({remaining}s)", existing
 
-            user_claims = sum(1 for c in self._claims.values() if c.claimed_by_id == claimer_id)
+            # Check max claims
+            all_claims = self._file_storage.get_all("claims")
+            user_claims = sum(
+                1 for c_data in all_claims.values()
+                if c_data.get("claimed_by_id") == claimer_id and c_data.get("expires_at", 0) > now
+            )
+            
             if user_claims >= self.max_claims_per_user:
                 return False, f"Maximum {self.max_claims_per_user} claims reached", None
 
+            # Create claim
             claim = HitClaim(
                 target_id=target_id, target_name=target_name,
-                claimed_by=claimer_name, claimed_by_id=claimer_id,
+                cstorage_mode == "kv":
+            existing_str = self._kv_get(f"claim:{target_id}")
+            existing = self._str_to_claim(existing_str)
+            if not existing:
+                return False, "No active claim"
+            if existing.claimed_by_id != claimer_id:
+                return False, f"Claim belongs to {existing.claimed_by}"
+            self._kv_del(f"claim:{target_id}")
+            return True, "Claim released"
+        elif self._storage_mode == "file":
+            existing_data = self._file_storage.get("claims", str(target_id))
+            existing = HitClaim(**existing_data) if existing_data else None
+            if not existing:
+                return False, "No active claim"
+            if existing.claimed_by_id != claimer_id:
+                return False, f"Claim belongs to {existing.claimed_by}"
+            self._file_storage.delete("claims", str(target_id)
+            existing = self._claims.get(target_id)
+            
+            if existing:
+                istorage_mode == "kv":
+            now = int(time.time())
+            c_str = self._kv_get(f"claim:{target_id}")
+            c = self._str_to_claim(c_str)
+            return c if c and c.expires_at > now else None
+        elif self._storage_mode == "file":
+            now = int(time.time())
+            c_data = self._file_storage.get("claims", str(target_id))
+            c = HitClaim(**c_data) if c_data else None
+                    remaining = existing.expires_at - now
+                    return False, f"Already claimed by {existing.claimed_by} ({remaining}s)", existing
+storage_mode == "kv":
+            now = int(time.time())
+            claims = []
+            for key in self._kv_keys("claim:*"):
+                c_str = self._kv_get(key)
+                c = self._str_to_claim(c_str)
+                if c and c.expires_at > now:
+                    claims.append(c)
+            return claims
+        elif self._storage_mode == "file":
+            now = int(time.time())
+            all_claims_data = self._file_storage.get_all("claims")
+            claims = []
+            for c_data in all_claims_data.values():
+                try:
+                    c = HitClaim(**c_data)
+                    if c.expires_at > now:
+                        claims.append(c)
+                except Exception:
+                    continueame, claimed_by_id=claimer_id,
                 claimed_at=now, expires_at=expiry_time, resolved=False,
             )
             self._claims[target_id] = claim
@@ -248,7 +314,7 @@ class ClaimManager:
             return self._claims.get(target_id)
 
     def get_all_claims(self) -> list[HitClaim]:
-        """Get all active claims."""
+        """Get all actiself._storage_mode
         if self._use_kv:
             now = int(time.time())
             claims = []

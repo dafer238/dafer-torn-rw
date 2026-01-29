@@ -1,6 +1,13 @@
 """
 Leaderboard tracking for faction members.
 Tracks xanax usage, overdoses, gym gains, and hospital time.
+
+Storage priority:
+1. Vercel KV / Redis (if configured) - for Vercel deployments
+2. File-based storage (if self-hosted) - for Orange Pi / single instance
+3. In-memory (fallback) - volatile, lost on restart
+
+Self-hosted deployments automatically use file storage for persistence.
 """
 
 import os
@@ -8,6 +15,8 @@ import time
 from typing import Optional
 from pydantic import BaseModel
 import httpx
+
+from .file_storage import get_file_storage, is_self_hosted
 
 
 class UserStats(BaseModel):
@@ -134,63 +143,80 @@ async def store_user_stats(stats: UserStats):
                 json=[stats.model_dump()],
             )
 
-            # Keep only last 365 days of history (trim list)
-            await client.post(
-                f"{kv['url']}/ltrim/{history_key}/0/8760",  # 24 per day * 365 days
-                headers={"Authorization": f"Bearer {kv['token']}"},
-            )
-
     except Exception as e:
-        print(f"Error storing stats in Redis: {e}")
+        print(f"Error storing stats in storage: {e}")
 
 
-async def load_stats_from_redis() -> dict[int, list[UserStats]]:
-    """Load all user stats history from Redis."""
-    kv = get_kv_client()
-    if not kv:
-        return {}
+async def load_stats_from_storage() -> dict[int, list[UserStats]]:
+    """
+    Load all user stats history from persistent storage.
+    Uses Redis if configured, otherwise file storage for self-hosted.
+    """
+    if is_self_hosted():
+        # File-based storage for self-hosted
+        storage = get_file_storage()
+        all_data = storage.get_all("leaderboards")
+        
+        all_stats: dict[int, list[UserStats]] = {}
+        
+        for key, value in all_data.items():
+            if key.startswith("history_"):
+                try:
+                    player_id = int(key.replace("history_", ""))
+                    if isinstance(value, list):
+                        history = [UserStats(**s) if isinstance(s, dict) else s for s in value]
+                        all_stats[player_id] = history
+                except Exception as e:
+                    print(f"Error parsing stats history {key}: {e}")
+        
+        return all_stats
+    else:
+        # Redis/KV for cloud deployment
+        kv = get_kv_client()
+        if not kv:
+            return {}
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Get all stats keys
-            response = await client.get(
-                f"{kv['url']}/keys/stats:*",
-                headers={"Authorization": f"Bearer {kv['token']}"},
-            )
-
-            if response.status_code != 200:
-                return {}
-
-            keys_data = response.json()
-            keys = keys_data.get("result", [])
-
-            all_stats: dict[int, list[UserStats]] = {}
-
-            # Load history for each player
-            for key in keys:
-                if not key.startswith("stats:"):
-                    continue
-
-                player_id = int(key.split(":")[1])
-                history_key = f"stats_history:{player_id}"
-
-                history_response = await client.get(
-                    f"{kv['url']}/lrange/{history_key}/0/-1",
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Get all stats keys
+                response = await client.get(
+                    f"{kv['url']}/keys/stats:*",
                     headers={"Authorization": f"Bearer {kv['token']}"},
                 )
 
-                if history_response.status_code == 200:
-                    history_data = history_response.json()
-                    history = history_data.get("result", [])
-                    all_stats[player_id] = [
-                        UserStats(**item) for item in history if isinstance(item, dict)
-                    ]
+                if response.status_code != 200:
+                    return {}
 
-            return all_stats
+                keys_data = response.json()
+                keys = keys_data.get("result", [])
 
-    except Exception as e:
-        print(f"Error loading stats from Redis: {e}")
-        return {}
+                all_stats: dict[int, list[UserStats]] = {}
+
+                # Load history for each player
+                for key in keys:
+                    if not key.startswith("stats:"):
+                        continue
+
+                    player_id = int(key.split(":")[1])
+                    history_key = f"stats_history:{player_id}"
+
+                    history_response = await client.get(
+                        f"{kv['url']}/lrange/{history_key}/0/-1",
+                        headers={"Authorization": f"Bearer {kv['token']}"},
+                    )
+
+                    if history_response.status_code == 200:
+                        history_data = history_response.json()
+                        history = history_data.get("result", [])
+                        all_stats[player_id] = [
+                            UserStats(**item) for item in history if isinstance(item, dict)
+                        ]
+
+                return all_stats
+
+        except Exception as e:
+            print(f"Error loading stats from storage: {e}")
+            return {}
 
 
 def calculate_delta(current: int, past: int) -> int:
@@ -214,15 +240,15 @@ async def calculate_leaderboards() -> Leaderboards:
 
     print(f"Calculating leaderboards... Local cache has {len(stats_cache)} players")
 
-    # Load all stats from Redis
-    all_stats = await load_stats_from_redis()
+    # Load all stats from persistent storage
+    all_stats = await load_stats_from_storage()
 
-    # If no Redis data, use local cache
+    # If no storage data, use local cache
     if not all_stats:
-        print("No Redis data, using local cache")
+        print("No storage data, using local cache")
         all_stats = {pid: [stats] for pid, stats in stats_cache.items()}
     else:
-        print(f"Loaded {len(all_stats)} players from Redis")
+        print(f"Loaded {len(all_stats)} players from storage")
 
     if not all_stats:
         print("WARNING: No stats data available at all!")

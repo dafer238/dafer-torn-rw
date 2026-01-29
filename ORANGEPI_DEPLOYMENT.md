@@ -17,8 +17,13 @@ Complete guide to deploy Torn Ranked War Tracker to your Orange Pi with Cloudfla
 
 This application is a FastAPI-based web service that tracks Torn game ranked wars. It currently uses:
 - **FastAPI** - Modern Python web framework
+- **File-based persistence** (self-hosted) OR **Vercel KV** (cloud) - Your choice
 - **In-memory caching** - Lightweight, no external dependencies
 - **Docker Compose** (optional) - For containerized deployment
+
+**Storage Modes:**
+- **Self-hosted mode**: Automatically uses JSON file storage in `data/` directory (persists across restarts)
+- **Cloud mode**: Uses Vercel KV/Redis when `KV_REST_API_URL` is configured
 
 **Target Domain:** `deadfragment.neodafer.com`
 
@@ -28,19 +33,27 @@ This application is a FastAPI-based web service that tracks Torn game ranked war
 
 ### Current Stack: ✅ **KEEP IT SIMPLE**
 
-For Orange Pi self-hosting, the **current in-memory cache approach is BETTER** than Redis:
+For Orange Pi self-hosting, the **file-based storage approach is PERFECT**:
 
-#### Why In-Memory Cache is Ideal:
+#### Why File-Based Storage is Ideal:
 - ✅ **Lower resource usage** - Orange Pi has limited RAM/CPU
-- ✅ **No additional services** - One less thing to manage
-- ✅ **Faster access** - No network/serialization overhead
-- ✅ **Simpler deployment** - No Redis maintenance
+- ✅ **No additional services** - One less thing to manage (no Redis)
+- ✅ **Faster access** - Direct file I/O, no network overhead
+- ✅ **Simpler deployment** - No database maintenance
+- ✅ **Persists across restarts** - Data saved to disk automatically
 - ✅ **Perfect for single instance** - No need for distributed cache
+- ✅ **Easy backups** - Just copy the `data/` directory
+
+#### What Gets Persisted:
+- **Hit claims** - Active attack claims survive restarts
+- **YATA battle stats** - Cached estimates stored permanently
+- **Faction overview** - Member profiles and cooldowns
+- **Leaderboards** - User statistics history
 
 #### When You WOULD Need Redis:
 - ❌ Multiple application instances (not your case)
-- ❌ Cache persistence across restarts (war data is ephemeral)
-- ❌ Shared cache between services (single service here)
+- ❌ Distributed systems across servers (single Orange Pi here)
+- ❌ Cloud deployments like Vercel (use file storage for self-hosted)
 
 ### Recommended Deployment Method
 
@@ -139,10 +152,14 @@ BOOSTER_CD_MAX=2880
 CLAIM_EXPIRY=300
 MAX_CLAIMS_PER_USER=1
 
-# These are not needed with in-memory cache
-# KV_REST_API_URL=not-used
-# KV_REST_API_TOKEN=not-used
+# Storage Configuration
+# Leave these commented out for self-hosted mode (uses file storage)
+# Only set if deploying to Vercel/cloud (uses Redis)
+# KV_REST_API_URL=your-redis-url
+# KV_REST_API_TOKEN=your-redis-token
 ```
+
+**Note:** When `KV_REST_API_URL` is not set, the application automatically uses file-based storage in the `data/` directory.
 
 #### 4. Test Run
 ```bash
@@ -339,13 +356,24 @@ Add:
     missingok
     notifempty
 }
-```
-
-### Backup
-```bash
-# Backup configuration
+``` and data
 tar -czf torn-rw-backup-$(date +%Y%m%d).tar.gz \
   ~/code/dafer-torn-rw/.env \
+  ~/code/dafer-torn-rw/data/ \
+  ~/.cloudflared/config.yml
+
+# Move to safe location
+mv torn-rw-backup-*.tar.gz ~/backups/
+```
+
+### Restore from Backup
+```bash
+# Extract backup
+cd ~/code/dafer-torn-rw
+tar -xzf ~/backups/torn-rw-backup-YYYYMMDD.tar.gz
+
+# Restart service
+sudo systemctl restart torn-rw-tracker
   ~/.cloudflared/config.yml
 
 # Move to safe location
@@ -417,11 +445,18 @@ docker-compose up -d
    uvicorn main:app --host 0.0.0.0 --port 8003 --workers 2
    ```
 4. **Set up fail2ban** to protect SSH access
-5. **Regular updates**:
-   ```bash
-   sudo apt update && sudo apt upgrade -y
-   ```
+5.File-based persistence (automatic in self-hosted mode)
+- No Redis needed
+- Data persists across restarts in `data/` directory
+- Cloudflare Tunnel for secure external access
 
+**Data Storage:**
+- All persistent data stored in `data/*.json` files
+- Automatic expiration handling for time-based data
+- Thread-safe concurrent access
+- Easy to backup (just copy `data/` folder)
+
+This gives you the best performance and lowest resource usage on Orange Pi while maintaining simplicity, reliability, and data persistence
 ---
 
 ## Summary
