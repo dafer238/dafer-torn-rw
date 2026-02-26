@@ -22,6 +22,13 @@ sudo ln -sf "$SCRIPT_DIR/$NGINX_CONF" "/etc/nginx/sites-available/$NGINX_CONF"
 sudo ln -sf "/etc/nginx/sites-available/$NGINX_CONF" "/etc/nginx/sites-enabled/$NGINX_CONF"
 sudo nginx -t && sudo systemctl reload nginx
 
+# TLS: obtain cert if not already present (requires DNS pointing to this server)
+if ! sudo certbot certificates 2>/dev/null | grep -q "df.neodafer.com"; then
+    sudo certbot --nginx -d df.neodafer.com --non-interactive --agree-tos -m dafer@neodafer.com
+else
+    echo "Certificate for df.neodafer.com already exists, skipping certbot."
+fi
+
 # Systemd: symlink service file and enable
 sudo ln -sf "$SCRIPT_DIR/$SERVICE_FILE" "/etc/systemd/system/$SERVICE_FILE"
 sudo systemctl daemon-reload
