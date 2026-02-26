@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -5,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$HOME/code/python/venvs/denv"
 NGINX_CONF="df.neodafer.com"
 SERVICE_FILE="torn.service"
+
+# Create .env from .env.example if it doesn't exist
+if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
+    cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+    echo "Created .env from .env.example — please fill in TORN_API_KEY and other required values."
+fi
 
 # Activate venv and install dependencies
 source "$VENV_DIR/bin/activate"
