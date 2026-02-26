@@ -7,7 +7,7 @@
 
 // Configuration
 const CONFIG = {
-    POLL_INTERVAL: 5000,  // 10 seconds - reduced to stay within Vercel free tier
+    POLL_INTERVAL: 1000,  // 1 second - VPS has plenty of bandwidth
     TIMER_INTERVAL: 1000,  // 1 second for smooth client-side timers
     API_BASE: '/api',
     TOAST_DURATION: 3000,
@@ -59,8 +59,16 @@ let state = {
 const elements = {};
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
+    // Fetch server config to get poll interval
+    try {
+        const resp = await fetch('/api/config');
+        if (resp.ok) {
+            const cfg = await resp.json();
+            if (cfg.frontend_poll_interval) CONFIG.POLL_INTERVAL = cfg.frontend_poll_interval;
+        }
+    } catch (e) { /* use defaults */ }
     loadConfig();
     setupEventListeners();
     startTimers();
@@ -324,8 +332,8 @@ function startPolling() {
     fetchStatus();
     fetchUserStatus();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
-    // Poll user status every 15 seconds (reduced to stay within Vercel limits)
-    state.userStatusInterval = setInterval(fetchUserStatus, 10000);
+    // Poll user status every 5 seconds
+    state.userStatusInterval = setInterval(fetchUserStatus, 5000);
     
     // Start chain watch if enabled
     if (state.chainWatch) {

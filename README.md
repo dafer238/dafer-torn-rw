@@ -9,163 +9,111 @@ Real-time situational awareness for Torn ranked wars. Track hospital timers, onl
 - **Med Detection**: Alerts when targets leave hospital early (medding out)
 - **Hit Claiming**: Coordinate attacks to prevent overlap
 - **Smart Caching**: Aggressive polling while respecting Torn's rate limits
+- **YATA Integration**: Battle stats estimates from YATA's ML models
+- **TornStats Integration**: Faction spy database lookup
+- **Faction Overview**: Leadership view of member status/cooldowns
+- **Leaderboards**: Track xanax/overdose stats
 
 ## Architecture
 
 - **Backend**: FastAPI (Python) with async HTTP client
 - **Frontend**: Static HTML/CSS/JS with client-side timers
-- **Polling**: Backend polls Torn API every 2 seconds, frontend polls backend every 1 second
-- **Deployment**: Vercel serverless functions + static hosting
+- **Storage**: Pure in-memory (no Redis, no file I/O in hot path)
+- **Deployment**: systemd service + nginx reverse proxy on Hetzner VPS
+- **Domain**: `df.neodafer.com` → nginx → `localhost:8005`
 
-## Rate Limits
+## Setup (Hetzner VPS)
 
-Torn allows **100 API requests per minute per user**. This app:
-- Polls enemy faction data every 2 seconds (30 req/min)
-- Leaves room for multiple API keys for higher throughput
-- Uses caching to serve frontend requests instantly
-
-## Setup
-
-### 1. Clone and Install
+### 1. Clone and install
 
 ```bash
-cd torn_rw
-python -m venv venv
-venv\Scripts\activate  # Windows
+cd /home/dafer/code/python/dafer-torn-rw
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
+### 2. Configure
 
-Copy `.env.example` to `.env` and fill in:
-
-```env
-# Required: Enemy factions to track
-ENEMY_FACTION_IDS=12345,67890
-
-# Optional: Restrict access to your faction only
-FACTION_ID=your_faction_id
-
-# Optional: Upstash Redis for shared claim state (auto-configured on Vercel)
-# KV_REST_API_URL=https://...
-# KV_REST_API_TOKEN=...
-```
-
-**Note**: Users will provide their own API keys via the frontend. No central API key needed!
-
-### 3. Run Locally
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
-python main.py
+cp .env.example .env
+nano .env
 ```
 
-Open http://localhost:8000 in your browser.
+Key settings:
+- `ENEMY_FACTION_IDS` - comma-separated enemy faction IDs
+- `FACTION_ID` - restrict access to your faction
+- `FRONTEND_POLL_INTERVAL` - how often the browser fetches data (ms, default: 1000)
+- `CACHE_TTL` - how long to cache Torn API responses (seconds, default: 1)
 
-### 4. Deploy to Vercel
+### 3. Install systemd service
 
 ```bash
-npm i -g vercel
-vercel login
-vercel --prod
+sudo cp torn.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable torn
+sudo systemctl start torn
 ```
 
-Set secrets in Vercel dashboard:
-- `ENEMY_FACTION_IDS` (required) - Comma-separated faction IDs to track
-- `FACTION_ID` (optional) - If set, only members of this faction can use the tracker
-- `KV_REST_API_URL` - Upstash Redis URL (auto-configured if using Vercel Storage)
-- `KV_REST_API_TOKEN` - Upstash Redis token (auto-configured if using Vercel Storage)
+Check status:
+```bash
+sudo systemctl status torn
+sudo journalctl -u torn -f
+```
 
-**Faction Restriction**: When `FACTION_ID` is set, the tracker validates each API key to ensure the user belongs to your faction. This prevents unauthorized access from other players. Leave unset to allow anyone with a valid Torn API key to use it.
+### 4. Setup nginx
 
-## User Authentication
+```bash
+sudo cp nginx/df.neodafer.com.conf /etc/nginx/sites-available/df.neodafer.com
+sudo ln -s /etc/nginx/sites-available/df.neodafer.com /etc/nginx/sites-enabled/
+sudo certbot --nginx -d df.neodafer.com
+sudo nginx -t && sudo systemctl reload nginx
+```
 
-Users provide their own API keys via the frontend. The tracker:
-1. Validates the API key with Torn's API
-2. Checks faction membership (if `FACTION_ID` is configured)
-3. Caches validation for 5 minutes to reduce API calls
-4. Uses the API key to fetch target data on their behalf
+### 5. DNS
 
-This means:
-- No central API key needed (users bring their own)
-- Each user stays within their own rate limits
-- Faction restriction ensures only teammates can access
+Point `df.neodafer.com` A record to `46.225.116.100`.
+
+## Configuration (.env)
+
+| Variable                 | Default     | Description                            |
+| ------------------------ | ----------- | -------------------------------------- |
+| `HOST`                   | `127.0.0.1` | Bind address                           |
+| `PORT`                   | `8005`      | Bind port                              |
+| `FRONTEND_POLL_INTERVAL` | `1000`      | Browser poll interval (ms)             |
+| `CACHE_TTL`              | `1`         | Torn API cache TTL (seconds)           |
+| `ENEMY_FACTION_IDS`      |             | Enemy faction IDs (comma-separated)    |
+| `FACTION_ID`             |             | Restrict to this faction               |
+| `LEADERSHIP_WHITELIST`   |             | Player IDs for faction overview access |
+| `CLAIM_EXPIRY`           | `300`       | Claim auto-expire time (seconds)       |
+| `MAX_CLAIMS_PER_USER`    | `1`         | Max concurrent claims per user         |
+| `DRUG_CD_MAX`            | `480`       | Max drug cooldown (minutes)            |
+| `MED_CD_MAX`             | `540`       | Max medical cooldown (minutes)         |
+| `BOOSTER_CD_MAX`         | `2880`      | Max booster cooldown (minutes)         |
 
 ## API Endpoints
 
-| Endpoint          | Method | Description                          |
-| ----------------- | ------ | ------------------------------------ |
-| `/api/status`     | GET    | Get all targets with hospital timers |
-| `/api/claim`      | POST   | Claim a target                       |
-| `/api/claim/{id}` | DELETE | Release a claim                      |
-| `/api/claims`     | GET    | List all active claims               |
-| `/api/health`     | GET    | Health check                         |
-| `/api/stats`      | GET    | Cache and rate limit stats           |
+| Endpoint                | Method | Description                          |
+| ----------------------- | ------ | ------------------------------------ |
+| `/api/status`           | GET    | All targets with hospital timers     |
+| `/api/me`               | GET    | Current user's status/bars/cooldowns |
+| `/api/claim`            | POST   | Claim a target                       |
+| `/api/claim/{id}`       | DELETE | Release a claim                      |
+| `/api/claims`           | GET    | List active claims                   |
+| `/api/config`           | GET    | Server configuration                 |
+| `/api/health`           | GET    | Health check                         |
+| `/api/stats`            | GET    | Cache and rate limit stats           |
+| `/api/leaderboards`     | GET    | Faction leaderboards                 |
+| `/api/faction-overview` | GET    | Leadership member overview           |
+| `/api/faction-config`   | GET    | Cooldown config                      |
+| `/api/tornstats/{id}`   | GET    | TornStats spy data                   |
 
-## Frontend Configuration
+## User Authentication
 
-On first load, enter your Torn ID and name. This is stored locally in your browser and used for:
-- Identifying your claims
-- Showing which targets you've claimed
-
-## Polling Strategy
-
-The app uses a two-tier polling strategy for perceived real-time updates:
-
-1. **Backend → Torn API**: Every 2 seconds
-   - Fetches faction member data
-   - Updates hospital timers
-   - Detects medding behavior
-
-2. **Frontend → Backend**: Every 1 second
-   - Gets cached data instantly
-   - Smooth countdown timers (100ms client-side updates)
-   - Claim state synchronization
-
-## Security
-
-- **User-provided API keys**: Each user brings their own API key, sent via `X-API-Key` header
-- **Faction validation**: Optional `FACTION_ID` restricts access to faction members only
-- **Validation caching**: Faction membership cached for 5 minutes to reduce API calls
-- **CORS configured**: Prevents unauthorized cross-origin access
-- **Rate limiting**: Each user operates within their own Torn API rate limits
-
-## Data Model
-
-### PlayerStatus
-```json
-{
-    "user_id": 1234567,
-    "name": "TargetPlayer",
-    "level": 75,
-    "hospital_until": 1703500000,
-    "hospital_remaining": 45,
-    "hospital_status": "about_to_exit",
-    "estimated_online": "online",
-    "medding": false,
-    "claimed_by": "YourName",
-    "claimed_at": 1703499900
-}
-```
-
-### HitClaim
-```json
-{
-    "target_id": 1234567,
-    "target_name": "TargetPlayer",
-    "claimed_by": "Attacker",
-    "claimed_by_id": 7654321,
-    "claimed_at": 1703499900,
-    "expires_at": 1703500020
-}
-```
-
-## Known Limitations
-
-- **Not truly real-time**: Torn API is pull-based, ~2 second delay minimum
-- **Online detection is heuristic**: Based on last action timestamp
-- **Med detection has false positives**: Early hospital exit could be attack-related
-- **Single instance state**: Claims are in-memory (Redis upgrade possible)
+Users provide their own Torn API keys via the frontend (`X-API-Key` header). The tracker validates faction membership and caches it for 5 minutes.
 
 ## License
 
-MIT - Use at your own risk. Not affiliated with Torn.
+MIT

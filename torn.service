@@ -1,0 +1,17 @@
+[Unit]
+Description=Torn Ranked War Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=dafer
+WorkingDirectory=/home/dafer/code/python/dafer-torn-rw
+EnvironmentFile=/home/dafer/code/python/dafer-torn-rw/.env
+ExecStart=/home/dafer/code/python/venvs/denv/bin/uvicorn main:app --host 127.0.0.1 --port 8005
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,22 +1,13 @@
 """
 Leaderboard tracking for faction members.
 Tracks xanax usage, overdoses, gym gains, and hospital time.
-
-Storage priority:
-1. Vercel KV / Redis (if configured) - for Vercel deployments
-2. File-based storage (if self-hosted) - for Orange Pi / single instance
-3. In-memory (fallback) - volatile, lost on restart
-
-Self-hosted deployments automatically use file storage for persistence.
+Pure in-memory storage for VPS deployment.
 """
 
-import os
 import time
 from typing import Optional
 from pydantic import BaseModel
 import httpx
-
-from .file_storage import get_file_storage, is_self_hosted
 
 
 class UserStats(BaseModel):
@@ -58,20 +49,10 @@ class Leaderboards(BaseModel):
 
 # In-memory cache for stats and leaderboards
 stats_cache: dict[int, UserStats] = {}  # player_id -> latest stats
+stats_history: dict[int, list[UserStats]] = {}  # player_id -> historical snapshots
 leaderboards_cache: Optional[Leaderboards] = None
 leaderboards_last_updated: float = 0
 LEADERBOARDS_UPDATE_INTERVAL = 3600  # 1 hour
-
-
-def get_kv_client():
-    """Get Upstash Redis client if configured."""
-    url = os.getenv("KV_REST_API_URL")
-    token = os.getenv("KV_REST_API_TOKEN")
-
-    if not url or not token:
-        return None
-
-    return {"url": url, "token": token}
 
 
 async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Optional[UserStats]:
@@ -94,10 +75,6 @@ async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Opt
             pid = player_id or data.get("player_id")
             name = data.get("name", "Unknown")
 
-            # Debug: print what we got
-            print(f"API response keys: {list(data.keys())}")
-
-            # Personal stats
             pstats = data.get("personalstats", {})
             xanax_taken = pstats.get("xantaken", 0)
             overdoses = pstats.get("overdosed", 0)
@@ -116,107 +93,22 @@ async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Opt
 
 
 async def store_user_stats(stats: UserStats):
-    """Store user stats in Redis and local cache."""
-    # Update local cache
+    """Store user stats in memory. Also append to history."""
     stats_cache[stats.player_id] = stats
 
-    # Store in Redis if available
-    kv = get_kv_client()
-    if not kv:
-        return
+    # Append to in-memory history
+    if stats.player_id not in stats_history:
+        stats_history[stats.player_id] = []
+    stats_history[stats.player_id].append(stats)
 
-    try:
-        # Store latest stats
-        key = f"stats:{stats.player_id}"
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{kv['url']}/set/{key}",
-                headers={"Authorization": f"Bearer {kv['token']}"},
-                json=stats.model_dump(),
-            )
-
-            # Also store in historical list with timestamp
-            history_key = f"stats_history:{stats.player_id}"
-            await client.post(
-                f"{kv['url']}/lpush/{history_key}",
-                headers={"Authorization": f"Bearer {kv['token']}"},
-                json=[stats.model_dump()],
-            )
-
-    except Exception as e:
-        print(f"Error storing stats in storage: {e}")
+    # Cap history at 1000 entries per player to avoid unbounded growth
+    if len(stats_history[stats.player_id]) > 1000:
+        stats_history[stats.player_id] = stats_history[stats.player_id][-1000:]
 
 
 async def load_stats_from_storage() -> dict[int, list[UserStats]]:
-    """
-    Load all user stats history from persistent storage.
-    Uses Redis if configured, otherwise file storage for self-hosted.
-    """
-    if is_self_hosted():
-        # File-based storage for self-hosted
-        storage = get_file_storage()
-        all_data = storage.get_all("leaderboards")
-        
-        all_stats: dict[int, list[UserStats]] = {}
-        
-        for key, value in all_data.items():
-            if key.startswith("history_"):
-                try:
-                    player_id = int(key.replace("history_", ""))
-                    if isinstance(value, list):
-                        history = [UserStats(**s) if isinstance(s, dict) else s for s in value]
-                        all_stats[player_id] = history
-                except Exception as e:
-                    print(f"Error parsing stats history {key}: {e}")
-        
-        return all_stats
-    else:
-        # Redis/KV for cloud deployment
-        kv = get_kv_client()
-        if not kv:
-            return {}
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Get all stats keys
-                response = await client.get(
-                    f"{kv['url']}/keys/stats:*",
-                    headers={"Authorization": f"Bearer {kv['token']}"},
-                )
-
-                if response.status_code != 200:
-                    return {}
-
-                keys_data = response.json()
-                keys = keys_data.get("result", [])
-
-                all_stats: dict[int, list[UserStats]] = {}
-
-                # Load history for each player
-                for key in keys:
-                    if not key.startswith("stats:"):
-                        continue
-
-                    player_id = int(key.split(":")[1])
-                    history_key = f"stats_history:{player_id}"
-
-                    history_response = await client.get(
-                        f"{kv['url']}/lrange/{history_key}/0/-1",
-                        headers={"Authorization": f"Bearer {kv['token']}"},
-                    )
-
-                    if history_response.status_code == 200:
-                        history_data = history_response.json()
-                        history = history_data.get("result", [])
-                        all_stats[player_id] = [
-                            UserStats(**item) for item in history if isinstance(item, dict)
-                        ]
-
-                return all_stats
-
-        except Exception as e:
-            print(f"Error loading stats from storage: {e}")
-            return {}
+    """Load all user stats history from in-memory store."""
+    return stats_history
 
 
 def calculate_delta(current: int, past: int) -> int:

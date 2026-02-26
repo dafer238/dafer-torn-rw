@@ -9,7 +9,6 @@ Provides REST API endpoints for:
 """
 
 import asyncio
-import json
 import os
 import time
 from contextlib import asynccontextmanager
@@ -38,7 +37,6 @@ from api import (
     YATAError,
     yata_cache,
 )
-from api.file_storage import get_file_storage, is_self_hosted
 from api.leaderboards import (
     get_leaderboards,
     update_user_stats_from_api_call,
@@ -98,6 +96,22 @@ def get_claim_expiry() -> int:
         return int(os.getenv("CLAIM_EXPIRY", "120"))
     except ValueError:
         return 120
+
+
+def get_cache_ttl() -> float:
+    """Get cache TTL from environment (seconds)."""
+    try:
+        return float(os.getenv("CACHE_TTL", "1"))
+    except ValueError:
+        return 1.0
+
+
+def get_frontend_poll_interval() -> int:
+    """Get frontend poll interval from environment (milliseconds)."""
+    try:
+        return int(os.getenv("FRONTEND_POLL_INTERVAL", "1000"))
+    except ValueError:
+        return 1000
 
 
 def get_allowed_faction_id() -> int | None:
@@ -247,7 +261,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan management."""
     # Startup
     # Note: API keys are now provided per-request by users
-    print("Torn War Tracker starting - users will provide their own API keys")
+    cache_ttl = get_cache_ttl()
+    poll_interval = get_frontend_poll_interval()
+    print(
+        f"Torn War Tracker starting on VPS (cache_ttl={cache_ttl}s, frontend_poll={poll_interval}ms)"
+    )
+
+    # Configure cache TTL from env
+    hospital_cache.default_ttl = cache_ttl
 
     # Initialize claim manager with config
     max_claims = get_max_claims_per_user()
@@ -258,20 +279,16 @@ async def lifespan(app: FastAPI):
     # Check faction restriction
     allowed_faction = get_allowed_faction_id()
     if allowed_faction:
-        print(
-            f"Faction restriction enabled: Only faction {allowed_faction} members can use this tracker"
-        )
+        print(f"Faction restriction: only faction {allowed_faction} members")
     else:
-        print("No faction restriction - all users with valid API keys can access")
+        print("No faction restriction - all valid API keys")
 
     yield
 
-    # Shutdown - nothing to clean up since clients are per-request
 
-
-# Simple cache for claims to reduce Redis queries
+# Simple cache for claims
 claims_cache = {"data": None, "timestamp": 0}
-CLAIMS_CACHE_TTL = 2  # Cache claims for 2 seconds
+CLAIMS_CACHE_TTL = 1  # Cache claims for 1 second
 
 # Cache for faction validation (player_id -> faction_id mapping)
 faction_validation_cache: dict[int, tuple[int, float]] = {}  # player_id -> (faction_id, timestamp)
@@ -281,9 +298,9 @@ FACTION_CACHE_TTL = 300  # Cache faction membership for 5 minutes
 stats_collection_cache: dict[int, float] = {}
 STATS_COLLECTION_INTERVAL = 3600  # Only collect stats once per hour per user
 
-# Cache for faction overview (reduces Upstash reads)
+# Cache for faction overview
 faction_overview_cache = {"data": None, "timestamp": 0}
-FACTION_OVERVIEW_CACHE_TTL = 30  # Cache faction overview for 30 seconds
+FACTION_OVERVIEW_CACHE_TTL = 10  # Cache faction overview for 10 seconds
 
 # API key pool for distributing YATA requests
 api_key_pool: list[str] = []
@@ -344,81 +361,29 @@ async def get_api_keys_for_yata(count: int) -> list[str]:
         return result
 
 
-async def get_yata_estimate_from_redis(target_id: int) -> Optional[dict]:
-    """Get YATA estimate from Redis/KV."""
-    kv_url = os.getenv("KV_REST_API_URL")
-    kv_token = os.getenv("KV_REST_API_TOKEN")
-
-    if not kv_url or not kv_token:
-        return None
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                f"{kv_url}/get/yata_{target_id}", headers={"Authorization": f"Bearer {kv_token}"}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                result = data.get("result")
-                # Redis returns a JSON string, need to parse it
-                if result and isinstance(result, str):
-                    return json.loads(result)
-                return result
-    except Exception as e:
-        print(f"Error reading YATA from Redis for {target_id}: {e}")
-
-    return None
-
-
-async def save_yata_estimate_to_storage(target_id: int, estimate: dict):
-    """
-    Save YATA estimate to persistent storage.
-    Uses Redis if configured, otherwise file storage for self-hosted.
-    """
-    if is_self_hosted():
-        # File-based storage for self-hosted (no expiration)
-        storage = get_file_storage()
-        storage.set("yata_cache", str(target_id), estimate)
-    else:
-        # Redis/KV for cloud deployment
-        kv_url = os.getenv("KV_REST_API_URL")
-        kv_token = os.getenv("KV_REST_API_TOKEN")
-
-        if not kv_url or not kv_token:
-            return
-
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                # Store without expiration (remove /ex/... part)
-                await client.post(
-                    f"{kv_url}/set/yata_{target_id}",
-                    headers={"Authorization": f"Bearer {kv_token}"},
-                    json=estimate,
-                )
-        except Exception as e:
-            print(f"Error saving YATA to storage for {target_id}: {e}")
+def save_yata_estimate_to_memory(target_id: int, estimate: dict):
+    """Save YATA estimate to in-memory cache."""
+    cache_key = f"yata_estimate_{target_id}"
+    yata_cache.set(cache_key, estimate, ttl=604800)  # 7 days
 
 
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
-    Always checks Redis (shared storage) to prevent stats disappearing.
+    All data lives in memory - no external storage.
     Fetches missing data in background to avoid blocking.
     """
     if not targets:
         return
 
-    # Add this key to the pool
     await add_api_key_to_pool(api_key)
 
-    # First pass: check in-memory cache (fast, synchronous)
-    targets_needing_redis_check = []
+    targets_to_fetch = []
     for target in targets:
         cache_key = f"yata_estimate_{target.user_id}"
         cached = yata_cache.get(cache_key)
 
         if cached:
-            # Use in-memory cached estimate
             target.yata_estimated_stats = cached.get("total")
             target.yata_estimated_stats_formatted = cached.get("total_formatted")
             target.yata_build_type = cached.get("type")
@@ -426,53 +391,22 @@ async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_ke
             target.yata_timestamp = cached.get("timestamp")
             target.yata_score = cached.get("score")
         else:
-            targets_needing_redis_check.append(target)
+            targets_to_fetch.append(target)
 
-    # Second pass: check Redis for targets not in memory (parallel)
-    if targets_needing_redis_check:
+    # Fetch missing estimates in background
+    if targets_to_fetch:
         try:
-            # Fetch all Redis data in parallel with timeout
-            redis_tasks = [
-                get_yata_estimate_from_redis(t.user_id) for t in targets_needing_redis_check
-            ]
-            redis_results = await asyncio.gather(*redis_tasks, return_exceptions=True)
+            async with yata_fetch_lock:
+                new_targets = [
+                    t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
+                ]
+                for t in new_targets:
+                    yata_fetches_in_progress.add(t.user_id)
 
-            targets_to_fetch = []
-            for target, redis_data in zip(targets_needing_redis_check, redis_results):
-                # Skip if Redis call failed
-                if isinstance(redis_data, Exception) or not redis_data:
-                    targets_to_fetch.append(target)
-                    continue
-
-                # Found in Redis, use it
-                target.yata_estimated_stats = redis_data.get("total")
-                target.yata_estimated_stats_formatted = redis_data.get("total_formatted")
-                target.yata_build_type = redis_data.get("type")
-                target.yata_skewness = redis_data.get("skewness")
-                target.yata_timestamp = redis_data.get("timestamp")
-                target.yata_score = redis_data.get("score")
-                # Also cache in memory for this instance
-                cache_key = f"yata_estimate_{target.user_id}"
-                yata_cache.set(cache_key, redis_data, ttl=604800)
-
-            # Fetch missing estimates in BACKGROUND (non-blocking)
-            if targets_to_fetch:
-                async with yata_fetch_lock:
-                    new_targets_to_fetch = [
-                        t for t in targets_to_fetch if t.user_id not in yata_fetches_in_progress
-                    ]
-                    # Mark as being fetched
-                    for t in new_targets_to_fetch:
-                        yata_fetches_in_progress.add(t.user_id)
-
-                if new_targets_to_fetch:
-                    asyncio.create_task(
-                        fetch_and_cache_yata_estimates(new_targets_to_fetch, api_key)
-                    )
-
+            if new_targets:
+                asyncio.create_task(fetch_and_cache_yata_estimates(new_targets, api_key))
         except Exception as e:
             print(f"Error in YATA enrichment: {e}")
-            # Continue without YATA data if there's an error
 
 
 async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: str):
@@ -492,12 +426,7 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
                 if target.user_id in result:
                     estimate = result[target.user_id]
 
-                    # Save to persistent storage (no expiration)
-                    await save_yata_estimate_to_storage(target.user_id, estimate)
-
-                    # Cache in memory
-                    cache_key = f"yata_estimate_{target.user_id}"
-                    yata_cache.set(cache_key, estimate, ttl=604800)
+                    save_yata_estimate_to_memory(target.user_id, estimate)
 
             except Exception as e:
                 print(f"Error fetching YATA for {target.user_id}: {e}")
@@ -521,10 +450,10 @@ app = FastAPI(
 )
 
 
-# CORS middleware for frontend access
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this
+    allow_origins=["https://df.neodafer.com", "http://localhost:8005"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -549,6 +478,8 @@ async def get_config():
         "enemy_faction_ids": get_enemy_faction_ids(),
         "max_claims_per_user": get_max_claims_per_user(),
         "claim_expiry": get_claim_expiry(),
+        "frontend_poll_interval": get_frontend_poll_interval(),
+        "cache_ttl": get_cache_ttl(),
     }
 
 
@@ -603,7 +534,7 @@ async def get_war_status(
         if all_targets:
             await enrich_targets_with_yata_estimates(all_targets, x_api_key)
 
-        # Get claims with caching to reduce Redis queries
+        # Get claims
         now_ms = time.time()
         if claims_cache["data"] is None or (now_ms - claims_cache["timestamp"]) > CLAIMS_CACHE_TTL:
             claims = claim_mgr.get_all_claims()
@@ -655,7 +586,7 @@ async def get_war_status(
             max_claims_per_user=claim_mgr.max_claims_per_user,
             last_updated=now,
             cache_age_seconds=0,
-            next_refresh_in=2.0,
+            next_refresh_in=get_cache_ttl(),
             api_calls_remaining=api_calls_left,
         )
 
@@ -817,7 +748,6 @@ async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_acc
     """
     Get overview of all faction members who have used the tracker.
     Only accessible to whitelisted leadership IDs.
-    Cached for 30 seconds to reduce Upstash operations.
     """
     x_api_key, player_id = auth
 
@@ -834,7 +764,7 @@ async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_acc
             status_code=403, detail="Access denied: You are not authorized to view faction overview"
         )
 
-    # Check cache first to reduce Upstash operations
+    # Check in-memory cache
     now_ms = time.time()
     if (
         faction_overview_cache["data"] is not None
@@ -842,7 +772,6 @@ async def get_faction_overview(auth: tuple[str, int] = Depends(check_faction_acc
     ):
         return faction_overview_cache["data"]
 
-    # Get all stored faction profiles from Upstash
     profiles = await get_all_faction_profiles()
 
     # Update cache
@@ -1224,4 +1153,6 @@ if os.path.exists(static_dir):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8005"))
+    uvicorn.run(app, host=host, port=port)
