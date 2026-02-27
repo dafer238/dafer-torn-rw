@@ -327,8 +327,18 @@ function updateSortIndicators() {
     });
 }
 
+function stopPolling() {
+    if (state.pollInterval) { clearInterval(state.pollInterval); state.pollInterval = null; }
+    if (state.userStatusInterval) { clearInterval(state.userStatusInterval); state.userStatusInterval = null; }
+    if (state.chainWatchInterval) { clearInterval(state.chainWatchInterval); state.chainWatchInterval = null; }
+}
+
 function startPolling() {
     if (!state.isUserInfoLoaded) return; // Don't start polling until user info is loaded
+
+    // Clear any existing intervals to prevent stacking
+    stopPolling();
+
     fetchStatus();
     fetchUserStatus();
     state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
@@ -340,28 +350,34 @@ function startPolling() {
         checkChainWatch();
         state.chainWatchInterval = setInterval(checkChainWatch, 10000); // Check every 10 seconds
     }
+
+    // Initialize faction overview check (only once, after user info is confirmed)
+    if (!state._factionOverviewInitialized && typeof window.initFactionOverview === 'function') {
+        state._factionOverviewInitialized = true;
+        window.initFactionOverview();
+    }
     
-    // Pause polling when tab is not visible to save CPU
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            // Tab hidden - clear intervals
-            if (state.pollInterval) clearInterval(state.pollInterval);
-            if (state.userStatusInterval) clearInterval(state.userStatusInterval);
-            if (state.chainWatchInterval) clearInterval(state.chainWatchInterval);
-        } else {
-            // Tab visible - restart polling
-            if (state.isUserInfoLoaded) {
-                fetchStatus();
-                fetchUserStatus();
-                state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
-                state.userStatusInterval = setInterval(fetchUserStatus, 5000);
-                if (state.chainWatch) {
-                    checkChainWatch();
-                    state.chainWatchInterval = setInterval(checkChainWatch, 10000);
+    // Pause polling when tab is not visible to save CPU (register only once)
+    if (!state._visibilityListenerAdded) {
+        state._visibilityListenerAdded = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                // Tab visible - restart polling
+                if (state.isUserInfoLoaded) {
+                    fetchStatus();
+                    fetchUserStatus();
+                    state.pollInterval = setInterval(fetchStatus, CONFIG.POLL_INTERVAL);
+                    state.userStatusInterval = setInterval(fetchUserStatus, 5000);
+                    if (state.chainWatch) {
+                        checkChainWatch();
+                        state.chainWatchInterval = setInterval(checkChainWatch, 10000);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 }
 
 async function checkChainWatch() {
@@ -824,7 +840,19 @@ function updateStats(data) {
 function updateApiInfo(data) {
     const age = data.cache_age_seconds ? data.cache_age_seconds.toFixed(1) : '0.0';
     elements.lastUpdate.textContent = `Data: ${age}s`;
-    elements.apiCalls.textContent = `API: ${data.api_calls_remaining || '--'}/100`;
+    const remaining = data.api_calls_remaining;
+    const apiText = remaining !== null && remaining !== undefined ? `API: ${remaining}/100` : 'API: --/100';
+    elements.apiCalls.textContent = apiText;
+    // Color code: green if > 50, yellow if > 20, red if <= 20
+    if (remaining !== null && remaining !== undefined) {
+        if (remaining <= 20) {
+            elements.apiCalls.style.color = '#ff4444';
+        } else if (remaining <= 50) {
+            elements.apiCalls.style.color = '#ffaa00';
+        } else {
+            elements.apiCalls.style.color = '';
+        }
+    }
 }
 
 function updateTimers() {
@@ -982,8 +1010,8 @@ function filterTargets(targets) {
         if (state.filters.levelMin !== null && t.level < state.filters.levelMin) return false;
         if (state.filters.levelMax !== null && t.level > state.filters.levelMax) return false;
         
-        // Battle stats filter (YATA only)
-        const totalStats = t.yata_estimated_stats || 0;
+        // Battle stats filter (best available: FFScouter > YATA)
+        const totalStats = t.ff_estimated_stats || t.yata_estimated_stats || 0;
         if (totalStats < state.filters.statsMin) return false;
         if (totalStats > state.filters.statsMax) return false;
         
@@ -1016,8 +1044,8 @@ function sortTargets(targets) {
                 cmp = a.level - b.level;
                 break;
             case 'stats':
-                const aStats = a.yata_estimated_stats || 0;
-                const bStats = b.yata_estimated_stats || 0;
+                const aStats = a.ff_estimated_stats || a.yata_estimated_stats || 0;
+                const bStats = b.ff_estimated_stats || b.yata_estimated_stats || 0;
                 cmp = aStats - bStats;
                 break;
             case 'online':
@@ -1117,25 +1145,48 @@ function renderTargetRow(target) {
     const onlineClass = target.estimated_online || 'unknown';
     const onlineText = { online: 'Online', idle: 'Idle', offline: 'Offline', unknown: '?' }[onlineClass];
     
-    // Battle stats (YATA only - no fallback)
+    // Battle stats - use best available source: FFScouter > YATA > level estimate
+    const hasFF = target.ff_estimated_stats && target.ff_estimated_stats > 0;
     const hasYata = target.yata_estimated_stats && target.yata_estimated_stats > 0;
+    const statsSource = target.stats_source || 'none';
+    
+    // Determine which stats to display (best available)
+    let displayStats = 0;
+    let displayStatsFormatted = '-';
+    let hasStats = false;
     
     let statsHtml;
-    if (hasYata) {
-        // Type is already a string from YATA API
-        const buildType = target.yata_build_type || 'Unknown';
+    if (hasFF) {
+        displayStats = target.ff_estimated_stats;
+        displayStatsFormatted = target.ff_estimated_stats_formatted || formatStats(displayStats);
+        hasStats = true;
         
-        // Format timestamp
+        const ffScore = target.ff_fair_fight !== null && target.ff_fair_fight !== undefined 
+            ? `FF Score: ${target.ff_fair_fight.toFixed(2)}` : '';
+        const estimateDate = target.ff_timestamp ? new Date(target.ff_timestamp * 1000).toLocaleString() : 'Unknown';
+        
+        let tooltip = `FFScouter Estimate`;
+        if (ffScore) tooltip += `\n${ffScore}`;
+        tooltip += `\nEstimate Date: ${estimateDate}`;
+        if (hasYata) {
+            tooltip += `\n\nYATA Estimate: ${target.yata_estimated_stats_formatted || '?'}`;
+            if (target.yata_build_type) tooltip += `\nYATA Type: ${target.yata_build_type}`;
+        }
+        
+        statsHtml = `<span class="stats-value ffscouter" title="${tooltip}">${displayStatsFormatted}</span>`;
+        statsHtml += `<span class="stats-source ff">FF</span>`;
+    } else if (hasYata) {
+        displayStats = target.yata_estimated_stats;
+        displayStatsFormatted = target.yata_estimated_stats_formatted || formatStats(displayStats);
+        hasStats = true;
+        
+        const buildType = target.yata_build_type || 'Unknown';
         const estimateDate = target.yata_timestamp ? new Date(target.yata_timestamp * 1000).toLocaleString() : 'Unknown';
         
-        // Create detailed tooltip with actual newlines (not escaped)
-        const tooltip = `YATA ML Estimate
-Type: ${buildType}
-Skewness: ${target.yata_skewness || 0}
-Score: ${target.yata_score || 0}
-Estimate Date: ${estimateDate}`;
+        const tooltip = `YATA ML Estimate\nType: ${buildType}\nSkewness: ${target.yata_skewness || 0}\nScore: ${target.yata_score || 0}\nEstimate Date: ${estimateDate}`;
         
-        statsHtml = `<span class="stats-value yata" title="${tooltip}">${target.yata_estimated_stats_formatted}</span>`;
+        statsHtml = `<span class="stats-value yata" title="${tooltip}">${displayStatsFormatted}</span>`;
+        statsHtml += `<span class="stats-source yata">Y</span>`;
     } else {
         statsHtml = '<span class="stats-value">-</span>';
     }
@@ -1182,12 +1233,12 @@ Estimate Date: ${estimateDate}`;
                     <button class="copy-target-btn" data-target-id="${target.user_id}" 
                             data-target-name="${escapeHtml(target.name)}" 
                             data-online-status="${onlineClass}"
-                            data-stats="${hasYata ? target.yata_estimated_stats_formatted : '-'}" title="Copy target info">📋</button>
+                            data-stats="${hasStats ? displayStatsFormatted : '-'}" title="Copy target info">📋</button>
                     ${badges}
                 </div>
             </td>
             <td>${target.level}</td>
-            <td class="stats-cell ${hasYata ? 'has-stats' : ''}">${statsHtml}</td>
+            <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsHtml}</td>
             <td class="online-cell">
                 <span class="online-dot ${onlineClass}"></span>
                 <span class="online-text">${onlineText}</span>

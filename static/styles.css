@@ -634,6 +634,35 @@ header h1 {
     cursor: help;
 }
 
+/* FFScouter estimates - highlighted styling */
+.stats-cell .stats-value.ffscouter {
+    color: #4fc3f7;
+    font-weight: 600;
+    cursor: help;
+}
+
+/* Stats source badge */
+.stats-source {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    padding: 1px 3px;
+    border-radius: 3px;
+    margin-left: 3px;
+    vertical-align: super;
+    line-height: 1;
+    opacity: 0.8;
+}
+
+.stats-source.ff {
+    background: rgba(79, 195, 247, 0.2);
+    color: #4fc3f7;
+}
+
+.stats-source.yata {
+    background: rgba(0, 210, 106, 0.2);
+    color: #00d26a;
+}
 .stats-cell .stats-age {
     font-size: 0.65rem;
     color: var(--text-secondary);
@@ -1256,6 +1285,15 @@ header h1 {
             font-weight: 700 !important;
     }
     
+                .stats-cell .stats-value.ffscouter {
+                    color: #4fc3f7 !important;
+                    font-weight: 700 !important;
+                }
+        
+                .stats-source {
+                    font-size: 0.5rem !important;
+                    padding: 0px 2px !important;
+                }
         .stats-cell .stats-age {
             display: block;
             font-size: 0.65rem !important;

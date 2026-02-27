@@ -404,15 +404,8 @@ async function initFactionOverview() {
     }
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        // Wait a bit for config to load
-        setTimeout(initFactionOverview, 500);
-    });
-} else {
-    setTimeout(initFactionOverview, 500);
-}
+// Initialize when called from app.js after user info is loaded
+// (removed auto-init timing hack - now triggered reliably from startPolling)
 
 // Expose for external use
 window.initFactionOverview = initFactionOverview;

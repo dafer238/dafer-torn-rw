@@ -37,6 +37,8 @@ from api import (
     YATAError,
     yata_cache,
     DiskCache,
+    fetch_ffscouter_estimates,
+    FFScouterError,
 )
 from api.leaderboards import (
     get_leaderboards,
@@ -79,14 +81,19 @@ def get_api_keys() -> list[str]:
 
 def get_enemy_faction_ids() -> list[int]:
     """Get enemy faction IDs from environment."""
-    ids_str = os.getenv("ENEMY_FACTION_IDS", "")
+    ids_str = os.getenv("ENEMY_FACTION_IDS", "").strip().strip('"').strip("'")
     if not ids_str:
         return []
 
-    try:
-        return [int(fid.strip()) for fid in ids_str.split(",") if fid.strip()]
-    except ValueError:
-        return []
+    result = []
+    for fid in ids_str.split(","):
+        fid = fid.strip()
+        if fid:
+            try:
+                result.append(int(fid))
+            except ValueError:
+                print(f"WARNING: Invalid enemy faction ID '{fid}', skipping")
+    return result
 
 
 def get_max_claims_per_user() -> int:
@@ -123,24 +130,30 @@ def get_frontend_poll_interval() -> int:
 
 def get_allowed_faction_id() -> int | None:
     """Get the faction ID that is allowed to use this tracker."""
-    faction_id = os.getenv("FACTION_ID")
+    faction_id = os.getenv("FACTION_ID", "").strip().strip('"').strip("'")
     if not faction_id:
         return None
     try:
         return int(faction_id)
     except ValueError:
+        print(f"WARNING: Invalid FACTION_ID '{faction_id}', faction restriction disabled")
         return None
 
 
 def get_leadership_whitelist() -> list[int]:
     """Get list of player IDs allowed to access faction overview."""
-    whitelist_str = os.getenv("LEADERSHIP_WHITELIST", "")
+    whitelist_str = os.getenv("LEADERSHIP_WHITELIST", "").strip().strip('"').strip("'")
     if not whitelist_str:
         return []
-    try:
-        return [int(pid.strip()) for pid in whitelist_str.split(",") if pid.strip()]
-    except ValueError:
-        return []
+    result = []
+    for pid in whitelist_str.split(","):
+        pid = pid.strip()
+        if pid:
+            try:
+                result.append(int(pid))
+            except ValueError:
+                print(f"WARNING: Invalid player ID '{pid}' in LEADERSHIP_WHITELIST, skipping")
+    return result
 
 
 def get_drug_cd_max() -> int:
@@ -165,6 +178,12 @@ def get_booster_cd_max() -> int:
         return int(os.getenv("BOOSTER_CD_MAX", "2880"))  # Default 48 hours
     except ValueError:
         return 2880
+
+
+def get_ffscouter_api_key() -> str | None:
+    """Get FFScouter API key from environment."""
+    key = os.getenv("FFSCOUTER_API_KEY", "").strip().strip('"').strip("'")
+    return key if key else None
 
 
 async def validate_faction_membership(
@@ -219,6 +238,7 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
     if allowed_faction_id is None:
         # Still need to get player_id for claims - do a quick validation
         try:
+            record_api_call_for_key(x_api_key)
             response = await shared_http_client.get(
                 "https://api.torn.com/user/",
                 params={"selections": "profile", "key": x_api_key},
@@ -231,15 +251,30 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
         except httpx.HTTPError:
             raise HTTPException(status_code=502, detail="Failed to validate API key")
 
-    # Check cache first
+    # Check cache first - keyed by API key for direct lookup
     now = time.time()
-    for player_id, (cached_faction_id, timestamp) in list(faction_validation_cache.items()):
+    cached_entry = faction_validation_cache.get(x_api_key)
+    if cached_entry:
+        cached_player_id, cached_faction_id, timestamp = cached_entry
         if (now - timestamp) < FACTION_CACHE_TTL and cached_faction_id == allowed_faction_id:
-            # Found in cache - but need to verify this is the right API key
-            # We'll do a quick validation
-            pass
+            # Valid cached entry - skip API call
+            player_id = cached_player_id
+
+            # Passively collect user stats for leaderboards (throttled)
+            if player_id:
+                last_update = stats_collection_cache.get(player_id, 0)
+                if (now - last_update) >= STATS_COLLECTION_INTERVAL:
+                    stats_collection_cache[player_id] = now
+                    asyncio.create_task(
+                        update_user_stats_from_api_call(
+                            x_api_key, player_id, http_client=shared_http_client
+                        )
+                    )
+
+            return x_api_key, player_id
 
     # Validate faction membership
+    record_api_call_for_key(x_api_key)
     is_valid, error_msg, player_id = await validate_faction_membership(
         x_api_key, allowed_faction_id
     )
@@ -247,9 +282,9 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
     if not is_valid:
         raise HTTPException(status_code=403, detail=error_msg)
 
-    # Cache the validation
+    # Cache the validation - keyed by API key for fast lookup
     if player_id:
-        faction_validation_cache[player_id] = (allowed_faction_id, now)
+        faction_validation_cache[x_api_key] = (player_id, allowed_faction_id, now)
 
     # Passively collect user stats for leaderboards (throttled to once per hour per user)
     if player_id:
@@ -292,6 +327,21 @@ async def lifespan(app: FastAPI):
     else:
         print("No faction restriction - all valid API keys")
 
+    # Log leadership whitelist
+    whitelist = get_leadership_whitelist()
+    if whitelist:
+        print(f"Leadership whitelist: {len(whitelist)} players - {whitelist}")
+    else:
+        print("Leadership whitelist: EMPTY (faction overview disabled)")
+
+    # Check FFScouter
+    ff_key = get_ffscouter_api_key()
+    if ff_key:
+        print(f"FFScouter fallback API key configured (ends ...{ff_key[-4:]})")
+    else:
+        print("FFScouter fallback key not configured")
+    print("FFScouter: will try each user's Torn API key first (if registered at ffscouter.com)")
+
     # Start periodic cache cleanup task
     cleanup_task = asyncio.create_task(periodic_cache_cleanup())
 
@@ -311,6 +361,7 @@ async def lifespan(app: FastAPI):
     # Close disk caches
     yata_cache.close()
     tornstats_disk.close()
+    ffscouter_disk.close()
     print("Torn War Tracker shutdown complete")
 
 
@@ -327,20 +378,38 @@ async def periodic_cache_cleanup():
             # Clean disk caches
             yata_cache.cleanup_expired()
             tornstats_disk.cleanup_expired()
+            ffscouter_disk.cleanup_expired()
             # Clean stale validation/throttle caches
             now = time.time()
             stale_validations = [
-                pid for pid, (_, ts) in faction_validation_cache.items()
+                key
+                for key, (_, _, ts) in faction_validation_cache.items()
                 if (now - ts) > FACTION_CACHE_TTL
             ]
-            for pid in stale_validations:
-                del faction_validation_cache[pid]
+            for key in stale_validations:
+                del faction_validation_cache[key]
             stale_stats = [
                 pid for pid, ts in stats_collection_cache.items()
                 if (now - ts) > STATS_COLLECTION_INTERVAL * 2
             ]
             for pid in stale_stats:
                 del stats_collection_cache[pid]
+            # Clean stale global key request tracking
+            with _global_key_lock:
+                for key in list(_global_key_requests.keys()):
+                    _global_key_requests[key] = [
+                        t for t in _global_key_requests[key] if (now - t) < 120
+                    ]
+                    if not _global_key_requests[key]:
+                        del _global_key_requests[key]
+            # Clean stale FFScouter key status cache
+            stale_ff_keys = [
+                key
+                for key, (_, ts) in ffscouter_key_status_cache.items()
+                if (now - ts) > FFSCOUTER_KEY_STATUS_TTL * 2
+            ]
+            for key in stale_ff_keys:
+                del ffscouter_key_status_cache[key]
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -352,7 +421,9 @@ claims_cache = {"data": None, "timestamp": 0}
 CLAIMS_CACHE_TTL = 1  # Cache claims for 1 second
 
 # Cache for faction validation (player_id -> faction_id mapping)
-faction_validation_cache: dict[int, tuple[int, float]] = {}  # player_id -> (faction_id, timestamp)
+faction_validation_cache: dict[
+    str, tuple[int, int, float]
+] = {}  # api_key -> (player_id, faction_id, timestamp)
 FACTION_CACHE_TTL = 300  # Cache faction membership for 5 minutes
 
 # Cache for stats collection throttling (player_id -> last_update_timestamp)
@@ -366,6 +437,14 @@ FACTION_OVERVIEW_CACHE_TTL = 10  # Cache faction overview for 10 seconds
 # Disk-backed cache for TornStats spy data (can be very large)
 tornstats_disk = DiskCache("tornstats", default_ttl=300)  # 5 minute TTL
 
+# Disk-backed cache for FFScouter estimates
+ffscouter_disk = DiskCache("ffscouter", default_ttl=604800)  # 7 day TTL
+
+# Cache for FFScouter key registration status: api_key -> (is_registered, timestamp)
+# Avoids hitting check-key endpoint every request
+ffscouter_key_status_cache: dict[str, tuple[bool, float]] = {}
+FFSCOUTER_KEY_STATUS_TTL = 3600  # Re-check every hour
+
 # API key pool for distributing YATA requests
 api_key_pool: list[str] = []
 api_key_pool_lock = asyncio.Lock()
@@ -376,6 +455,33 @@ api_key_last_seen: dict[str, float] = {}
 # Track YATA fetches in progress to prevent duplicates
 yata_fetches_in_progress: set[int] = set()
 yata_fetch_lock = asyncio.Lock()
+
+# Global per-API-key request tracking (since TornClient is recreated per request)
+# Maps API key -> list of request timestamps in the last 60 seconds
+_global_key_requests: dict[str, list[float]] = {}
+from threading import Lock as _ThreadLock
+
+_global_key_lock = _ThreadLock()
+
+
+def record_api_call_for_key(api_key: str):
+    """Record an API call for per-key rate tracking."""
+    with _global_key_lock:
+        if api_key not in _global_key_requests:
+            _global_key_requests[api_key] = []
+        _global_key_requests[api_key].append(time.time())
+
+
+def get_api_calls_remaining_for_key(api_key: str) -> int:
+    """Get estimated remaining API calls for a key (100/minute limit)."""
+    now = time.time()
+    cutoff = now - 60
+    with _global_key_lock:
+        requests = _global_key_requests.get(api_key, [])
+        # Clean old entries
+        requests = [t for t in requests if t > cutoff]
+        _global_key_requests[api_key] = requests
+        return max(0, 100 - len(requests))
 
 
 async def add_api_key_to_pool(api_key: str):
@@ -507,6 +613,140 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
                 yata_fetches_in_progress.discard(target_id)
 
 
+async def _is_key_registered_with_ffscouter(api_key: str) -> bool:
+    """
+    Check if a Torn API key is registered with FFScouter, with caching.
+    Results are cached for 1 hour to avoid hammering the check-key endpoint.
+    """
+    from api.ffscouter_client import check_ffscouter_key
+
+    now = time.time()
+    cached = ffscouter_key_status_cache.get(api_key)
+    if cached:
+        is_registered, timestamp = cached
+        if (now - timestamp) < FFSCOUTER_KEY_STATUS_TTL:
+            return is_registered
+
+    # Check with FFScouter
+    try:
+        is_registered = await check_ffscouter_key(api_key, http_client=shared_http_client)
+        ffscouter_key_status_cache[api_key] = (is_registered, now)
+        return is_registered
+    except Exception as e:
+        print(f"Error checking FFScouter key status: {e}")
+        return False
+
+
+async def _get_ffscouter_key_for_request(user_api_key: str) -> str | None:
+    """
+    Determine which API key to use for FFScouter requests.
+
+    Strategy:
+    1. Try the user's own Torn API key (if registered with FFScouter)
+    2. Fall back to server's FFSCOUTER_API_KEY env variable
+    3. Return None if neither is available
+
+    FFScouter uses Torn API keys registered at ffscouter.com.
+    Rate limit is 20 req/min per IP (not per key), but with 7-day disk
+    cache this is rarely hit anyway.
+    """
+    # Try user's key first
+    if user_api_key:
+        if await _is_key_registered_with_ffscouter(user_api_key):
+            return user_api_key
+
+    # Fall back to server-configured key
+    server_key = get_ffscouter_api_key()
+    if server_key:
+        return server_key
+
+    return None
+
+
+async def enrich_targets_with_ffscouter_estimates(targets: list[PlayerStatus], user_api_key: str):
+    """
+    Enrich target players with FFScouter battle stats estimates.
+    FFScouter supports batch requests (up to 205 targets), so this is very efficient.
+    Estimates are cached on disk for 7 days.
+
+    Strategy for API key selection:
+    - FFScouter uses Torn API keys registered at ffscouter.com
+    - Try the user's own Torn API key first (already provided via X-API-Key)
+    - If their key isn't registered with FFScouter, fall back to server's FFSCOUTER_API_KEY
+    - Rate limit is 20 req/min per IP (not per key), but with 7-day cache this is rarely hit
+    """
+    if not targets:
+        return
+
+    # Determine which FFScouter key to use
+    ff_key = await _get_ffscouter_key_for_request(user_api_key)
+    if not ff_key:
+        return
+
+    targets_to_fetch = []
+    for target in targets:
+        cache_key = f"ff_estimate_{target.user_id}"
+        cached = ffscouter_disk.get(cache_key)
+
+        if cached:
+            target.ff_estimated_stats = cached.get("total")
+            target.ff_estimated_stats_formatted = cached.get("total_formatted")
+            target.ff_fair_fight = cached.get("fair_fight")
+            target.ff_timestamp = cached.get("timestamp")
+        else:
+            targets_to_fetch.append(target)
+
+    # Fetch missing estimates (batch request - very efficient)
+    if targets_to_fetch:
+        try:
+            target_ids = [t.user_id for t in targets_to_fetch]
+            results = await fetch_ffscouter_estimates(
+                target_ids, ff_key, http_client=shared_http_client
+            )
+
+            for target in targets_to_fetch:
+                if target.user_id in results:
+                    estimate = results[target.user_id]
+                    # Save to disk cache
+                    ffscouter_disk.set(f"ff_estimate_{target.user_id}", estimate, ttl=604800)
+                    # Apply to target
+                    target.ff_estimated_stats = estimate.get("total")
+                    target.ff_estimated_stats_formatted = estimate.get("total_formatted")
+                    target.ff_fair_fight = estimate.get("fair_fight")
+                    target.ff_timestamp = estimate.get("timestamp")
+
+        except FFScouterError as e:
+            print(f"FFScouter enrichment error: {e}")
+        except Exception as e:
+            print(f"Error in FFScouter enrichment: {e}")
+
+
+async def enrich_targets_with_stats(targets: list[PlayerStatus], api_key: str):
+    """
+    Enrich targets with battle stats from all available sources.
+    Priority: FFScouter > YATA > level-based estimate.
+    Sets stats_source to indicate which service provided the data.
+    """
+    if not targets:
+        return
+
+    # Try FFScouter first (batch request, very efficient)
+    await enrich_targets_with_ffscouter_estimates(targets, api_key)
+
+    # Also fetch YATA for targets that FFScouter doesn't have data for
+    await enrich_targets_with_yata_estimates(targets, api_key)
+
+    # Set stats_source based on what data is available
+    for target in targets:
+        if target.ff_estimated_stats and target.ff_estimated_stats > 0:
+            # FFScouter data available - use it as primary
+            target.stats_source = "ffscouter"
+        elif target.yata_estimated_stats and target.yata_estimated_stats > 0:
+            # YATA data available - use as fallback
+            target.stats_source = "yata"
+        elif target.estimated_stats and target.estimated_stats > 0:
+            # Level-based estimate only
+            target.stats_source = "level"
 # Create FastAPI app
 app = FastAPI(
     title="Torn Ranked War Tracker",
@@ -595,10 +835,10 @@ async def get_war_status(
         # Update hospital states and reset claims for those who went back to hospital
         claim_mgr.update_hospital_states(all_targets)
 
-        # Fetch YATA battle stats estimates (cached for 7 days)
+        # Fetch battle stats estimates (FFScouter first, YATA fallback)
         # Only fetch if we have targets
         if all_targets:
-            await enrich_targets_with_yata_estimates(all_targets, x_api_key)
+            await enrich_targets_with_stats(all_targets, x_api_key)
 
         # Get claims
         now_ms = time.time()
@@ -638,8 +878,8 @@ async def get_war_status(
         claimed = sum(1 for t in all_targets if t.claimed_by)
         traveling = sum(1 for t in all_targets if t.traveling)
 
-        # Get actual API calls remaining from client
-        api_calls_left = getattr(client, "api_calls_remaining", 100)
+        # Get actual API calls remaining from global per-key tracker
+        api_calls_left = get_api_calls_remaining_for_key(x_api_key)
 
         response = WarStatus(
             targets=all_targets,
@@ -672,6 +912,10 @@ async def get_my_status(auth: tuple[str, int] = Depends(check_faction_access)):
     x_api_key, player_id = auth
 
     try:
+        # Record API calls for per-key tracking (2 calls: user + faction)
+        record_api_call_for_key(x_api_key)
+        record_api_call_for_key(x_api_key)
+
         # Fetch user data and faction chain in parallel using shared client
         user_task = shared_http_client.get(
             "https://api.torn.com/user/",
@@ -1190,8 +1434,29 @@ if os.path.exists(static_dir):
         """Serve the main frontend page."""
         index_path = os.path.join(static_dir, "index.html")
         if os.path.exists(index_path):
-            return FileResponse(index_path)
+            return FileResponse(
+                index_path,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
         raise HTTPException(status_code=404, detail="Frontend not found")
+
+    @app.middleware("http")
+    async def add_no_cache_for_static(request, call_next):
+        """Add no-cache headers for static JS/CSS files to ensure fresh content."""
+        response = await call_next(request)
+        if request.url.path.startswith("/static/") and (
+            request.url.path.endswith(".js")
+            or request.url.path.endswith(".css")
+            or request.url.path.endswith(".html")
+        ):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     @app.get("/favicon.ico")
     async def serve_favicon():

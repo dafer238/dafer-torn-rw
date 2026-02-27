@@ -157,9 +157,16 @@ class TornClient:
         params = {"selections": selections_str, "key": api_key}
 
         try:
-            # Record the request
+            # Record the request in both local and global trackers
             rate_limiter.record_request()
             self.key_requests[api_key].append(time.time())
+
+            # Record in global per-key tracker (imported from main)
+            try:
+                from main import record_api_call_for_key
+                record_api_call_for_key(api_key)
+            except ImportError:
+                pass  # Not running from main context
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()

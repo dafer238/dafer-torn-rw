@@ -26,6 +26,12 @@ from .yata_client import (
     format_battle_stats,
 )
 
+from .ffscouter_client import (
+    fetch_ffscouter_estimates,
+    check_ffscouter_key,
+    FFScouterError,
+)
+
 __all__ = [
     # Models
     "PlayerStatus",
@@ -59,4 +65,8 @@ __all__ = [
     "fetch_single_battle_stats_estimate",
     "YATAError",
     "format_battle_stats",
+    # FFScouter Client
+    "fetch_ffscouter_estimates",
+    "check_ffscouter_key",
+    "FFScouterError",
 ]

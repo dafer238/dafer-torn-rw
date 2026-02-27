@@ -69,6 +69,15 @@ class PlayerStatus(BaseModel):
     yata_timestamp: Optional[int] = None  # Timestamp of the estimate
     yata_score: Optional[int] = None  # YATA score
 
+    # FFScouter battle stats estimate (fair fight based)
+    ff_estimated_stats: Optional[int] = None  # Total battle stats from FFScouter
+    ff_estimated_stats_formatted: Optional[str] = None  # Human readable
+    ff_fair_fight: Optional[float] = None  # Fair fight score
+    ff_timestamp: Optional[int] = None  # Timestamp of the estimate
+
+    # Stats source: which service provided the displayed estimate ("ffscouter", "yata", "level")
+    stats_source: Optional[str] = None
+
     # Claim info (from our system, not Torn)
     claimed_by: Optional[str] = None  # Username who claimed
     claimed_by_id: Optional[int] = None  # User ID who claimed
