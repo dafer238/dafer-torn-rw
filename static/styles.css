@@ -659,6 +659,13 @@ header h1 {
     color: #4fc3f7;
 }
 
+.stats-source.ff-score {
+    font-size: 0.6rem;
+    padding: 1px 4px;
+    font-weight: 700;
+    border-radius: 3px;
+    white-space: nowrap;
+}
 .stats-source.yata {
     background: rgba(0, 210, 106, 0.2);
     color: #00d26a;
@@ -746,6 +753,8 @@ header h1 {
     text-transform: uppercase;
     border-bottom: 1px solid var(--border-color);
     white-space: nowrap;
+    overflow: hidden;
+        text-overflow: ellipsis;
 }
 
 .target-table th.sortable {
@@ -772,8 +781,60 @@ header h1 {
     padding: 6px 10px;
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
+    overflow: hidden;
+        text-overflow: ellipsis;
 }
 
+/* Column widths for consistent alignment */
+.target-table th:nth-child(1),
+.target-table td:nth-child(1) {
+    width: 68px;
+}
+
+/* Timer */
+.target-table th:nth-child(2),
+.target-table td:nth-child(2) {
+    max-width: 160px;
+}
+
+/* Name */
+.target-table th:nth-child(3),
+.target-table td:nth-child(3) {
+    width: 36px;
+    text-align: center;
+}
+
+/* Level */
+.target-table th:nth-child(4),
+.target-table td:nth-child(4) {
+    width: 95px;
+}
+
+/* Stats */
+.target-table th:nth-child(5),
+.target-table td:nth-child(5) {
+    width: 70px;
+}
+
+/* Status */
+.target-table th:nth-child(6),
+.target-table td:nth-child(6) {
+    width: 140px;
+}
+
+/* Reason */
+.target-table th:nth-child(7),
+.target-table td:nth-child(7) {
+    width: 72px;
+}
+
+/* Claimed */
+.target-table th:nth-child(8),
+.target-table td:nth-child(8) {
+    width: 64px;
+}
+
+/* Action */
 .target-table tbody tr {
     transition: background 0.1s ease;
 }
@@ -847,15 +908,26 @@ header h1 {
 
 /* Player Name Cell */
 .name-cell {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    /* Do NOT use display:flex on <td> - it breaks table column alignment */
 }
 
 .player-links {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: nowrap;
+    }
+    
+    .player-links-spacer {
+        flex: 0 0 auto;
+        width: 4px;
+    }
+    
+    .profile-link {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 120px;
 }
 
 .profile-link, .attack-link {
@@ -933,6 +1005,10 @@ header h1 {
 
 /* Online Status */
 .online-cell {
+    /* Do NOT use display:flex on <td> - it breaks table column alignment */
+    }
+    
+    .online-content {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1054,21 +1130,22 @@ header h1 {
 
 @media (max-width: 600px) {
     body {
-            font-size: 14px;
+        font-size: 14px;
         }
-    .container {
-        padding: 8px;
+
+        .container {
     }
+                padding: 6px;
     
-        /* Header improvements */
+/* Header improvements */
     header {
         flex-wrap: wrap;
-            gap: 8px;
+        gap: 8px;
             padding: 10px 0;
         }
         
         header h1 {
-            font-size: 1.4rem;
+        font-size: 1.3rem;
             width: 100%;
         }
         
@@ -1076,54 +1153,54 @@ header h1 {
             flex-wrap: wrap;
             gap: 10px;
             width: 100%;
-            font-size: 0.85rem;
+        font-size: 0.8rem;
         }
         
         /* User status bar - make it fully responsive */
         .user-status-bar {
-            gap: 8px;
-            padding: 8px;
+        gap: 6px;
+            padding: 6px;
             flex-wrap: wrap;
         }
         
         .user-status-item {
-            flex-basis: calc(50% - 4px);
-        gap: 6px;
-        padding: 6px;
+        flex-basis: calc(50% - 3px);
+            gap: 4px;
+            padding: 5px;
         }
         
         .user-status-label {
-            font-size: 0.75rem;
-            min-width: 30px;
+        font-size: 0.72rem;
+            min-width: 28px;
         }
         
         .bar-container {
             width: 100%;
-            min-width: 80px;
+        min-width: 70px;
             height: 16px;
         }
         
         .bar-text {
-            font-size: 0.75rem;
+        font-size: 0.72rem;
         }
         
         .cooldown-item {
-            flex-basis: calc(33.33% - 5px);
-            min-width: 70px;
-            padding: 6px;
+        flex-basis: calc(33.33% - 4px);
+            min-width: 65px;
+            padding: 5px;
         }
         
         .cooldown-label {
-            font-size: 0.7rem;
+        font-size: 0.68rem;
         }
         
         .cooldown-value {
-            font-size: 0.85rem;
+        font-size: 0.8rem;
         }
         
         .chain-item {
             flex-basis: 100%;
-            padding: 6px 12px;
+        padding: 5px 10px;
         }
         
         /* View toggle on mobile */
@@ -1138,444 +1215,510 @@ header h1 {
             padding: 6px 12px;
             font-size: 0.75rem;
     }
-    
+
     /* Make stats bar wrap on mobile */
     .stats-bar {
         flex-wrap: wrap;
-        gap: 6px;
-            padding: 6px;
+        gap: 4px;
+            padding: 4px;
     }
-    
+
     .stat {
-        padding: 8px 12px;
-            min-width: calc(50% - 3px);
+    padding: 6px 10px;
+    min-width: calc(33.33% - 3px);
+    flex: 1;
         border-right: none;
         border: 1px solid var(--border-color);
-        border-radius: 4px;
-    }
+                border-radius: 4px;
     
-        .stat-value {
-            font-size: 1.2rem;
+.stat-value {
+        font-size: 1.1rem;
         }
-    
+        
         .stat-label {
-            font-size: 0.7rem;
+        font-size: 0.65rem;
         }
-    
+        
         /* Config panel mobile improvements */
         .config-panel {
             padding: 10px;
         }
-    
+        
         .config-form {
             flex-direction: column;
             gap: 10px;
         }
-    
+        
         .form-group {
             width: 100%;
         }
-    
+        
         .form-group input {
             width: 100%;
             font-size: 14px;
             padding: 8px;
         }
-    
-        /* Filter section mobile improvements */
+        
+                                                                /* Filter section mobile improvements - 2 filter groups per row */
         .filter-section {
-            gap: 8px;
+            flex-direction: row;
+                flex-wrap: wrap;
+                gap: 6px;
         }
-    
+        
         .filter-group {
             flex-wrap: wrap;
-            width: 100%;
-            gap: 6px;
+            flex: 1 1 calc(50% - 3px);
+                min-width: calc(50% - 3px);
+                gap: 3px;
         }
-    
+        
         .filter-label {
             width: 100%;
-            font-size: 0.75rem;
-            margin-bottom: 2px;
+            font-size: 0.68rem;
+                margin-bottom: 1px;
         }
-    
+        
         .filter-btn {
-            padding: 6px 12px;
-            font-size: 0.8rem;
+            padding: 4px 6px;
+                font-size: 0.7rem;
             flex: 1;
-            min-width: 70px;
+            min-width: 0;
+                text-align: center;
         }
-    
+        
         /* Range filters mobile */
         .range-filters {
-            gap: 10px;
+        gap: 8px;
             padding-top: 8px;
             margin-top: 6px;
         }
-    
+        
         .range-filter {
             flex-wrap: wrap;
             width: 100%;
             gap: 6px;
         }
-    
+        
         .range-input {
-            width: 70px;
-            font-size: 0.8rem;
-            padding: 6px 8px;
+        width: 65px;
+            font-size: 0.78rem;
+            padding: 6px;
         }
-    
+        
         .range-select {
-            width: 100%;
-            font-size: 0.8rem;
-            padding: 6px 8px;
+        flex: 1;
+            font-size: 0.78rem;
+            padding: 6px;
         }
-    
+        
         .action-controls {
             width: 100%;
             gap: 8px;
         }
-    
+        
         .action-controls .btn {
             flex: 1;
             padding: 8px 12px;
             font-size: 0.85rem;
+            min-height: 36px;
+                touch-action: manipulation;
         }
     
-        /* Table improvements - KEEP STATS COLUMN VISIBLE */
+                                                                /* Table improvements */
         .target-table-container {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            margin: 0 -8px;
-            padding: 0 8px;
+        margin: 0 -6px;
+            padding: 0 6px;
         }
-    
+        
         .target-table {
-            font-size: 0.75rem;
-            min-width: 100%;
+            font-size: 0.72rem;
+                min-width: 580px;
         }
+
     .target-table th,
     .target-table td {
-        padding: 6px 8px;
-            font-size: 0.75rem;
-    }
-    
-        /* IMPORTANT: Keep Stats column visible on mobile */
+        padding: 6px 5px;
+            font-size: 0.72rem;
+        }
+        
+        /* Adjusted column widths for mobile */
+        .target-table th:nth-child(1),
+        .target-table td:nth-child(1) {
+            width: 55px;
+        }
+                                /* Timer */
+                                .target-table th:nth-child(3),
+                                .target-table td:nth-child(3) {
+                                    width: 30px;
+                                }
+                
+                                /* Level */
         .target-table th:nth-child(4),
-    .target-table td:nth-child(4) {
-        display: table-cell !important;
-            min-width: 90px;
-    }
-    
+                                .target-table td:nth-child(4) {
+                    width: 85px;
+                    }
+                    
+                    /* Stats */
+                    .target-table th:nth-child(5),
+                    .target-table td:nth-child(5) {
+                        width: 52px;
+                    }
+                    
+                    /* Status */
+                    .target-table th:nth-child(6),
+                    .target-table td:nth-child(6) {
+                        width: 85px;
+                    }
+                    
+                    /* Reason */
+                    .target-table th:nth-child(7),
+                    .target-table td:nth-child(7) {
+                        width: 55px;
+                    }
+                    
+                    /* Claimed */
+                    .target-table th:nth-child(8),
+                    .target-table td:nth-child(8) {
+                        width: 54px;
+                    }
+                                /* Action */
+                
+                                .profile-link {
+                                    max-width: 90px;
+                                }
         /* Stats cell mobile styling */
         .stats-cell {
-            font-size: 0.7rem !important;
-            white-space: normal !important;
-            line-height: 1.3;
-    }
     
+            font-size: 0.7rem !important;
+                        white-space: nowrap !important;
+                        line-height: 1.3;
+        
         .stats-cell .stats-value {
-            display: block;
-            font-size: 0.75rem !important;
+        font-size: 0.72rem !important;
             font-weight: 600;
     }
-    
-        .stats-cell .stats-value.yata {
-            color: #00d26a !important;
-            font-weight: 700 !important;
-    }
-    
-                .stats-cell .stats-value.ffscouter {
-                    color: #4fc3f7 !important;
-                    font-weight: 700 !important;
-                }
-        
+
                 .stats-source {
                     font-size: 0.5rem !important;
                     padding: 0px 2px !important;
                 }
-        .stats-cell .stats-age {
-            display: block;
-            font-size: 0.65rem !important;
-            margin-top: 2px;
+.stats-source.ff-score {
+    font-size: 0.52rem !important;
+    padding: 1px 3px !important;
     }
-    
+
     /* Timer cell */
     .timer-cell {
-        font-size: 0.75rem;
-            min-width: 60px;
+        font-size: 0.72rem;
+            min-width: 55px;
             font-weight: 600;
     }
-    
+
     /* Name cell */
     .name-cell {
-        font-size: 0.75rem;
-            min-width: 120px;
+        font-size: 0.72rem;
+            min-width: 100px;
         }
         
         .player-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            align-items: center;
+        gap: 3px;
         }
         
         .player-links a,
         .player-links button {
-        font-size: 0.7rem;
-        padding: 2px 6px;
+        font-size: 0.68rem;
+            padding: 2px 5px;
         }
         
         .profile-link {
-            flex: 1 1 100%;
-            margin-bottom: 2px;
+            white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
         }
-        
-        /* Online status - keep text on mobile */
+                                                                /* Online status */
         .online-cell {
-            font-size: 0.75rem;
-            min-width: 70px;
+        font-size: 0.72rem;
+            min-width: 50px;
         }
         
-        .online-dot {
-            width: 8px;
-            height: 8px;
-    }
-    
-        .online-text {
-            display: inline !important;
-            font-size: 0.7rem;
+                                                                .online-content {
+                                                                    gap: 3px;
+                                                                }
+                                                                .online-dot {
+                    width: 7px;
+                        height: 7px;
+                    }
+.online-text {
+    display: inline !important;
+        font-size: 0.68rem;
         }
-    
+        
         /* Reason column */
         .reason-cell {
-            max-width: 100px;
-            font-size: 0.7rem;
-            white-space: normal;
-            line-height: 1.2;
+        max-width: 90px;
+            font-size: 0.68rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-    
+        
         /* Claim column */
         .claim-cell {
-            font-size: 0.7rem;
-            min-width: 60px;
+        font-size: 0.68rem;
+            min-width: 50px;
         }
-    
-        /* Make action buttons more touch-friendly */
-        .btn-small {
-            padding: 6px 10px;
-            font-size: 0.75rem;
-            min-height: 32px;
+                                                                /* Touch-friendly buttons */
+                                                                .btn-claim,
+                                                                .btn-unclaim {
+                                                                    padding: 5px 8px;
+                                                                    font-size: 0.72rem;
+                                                                    min-height: 28px;
             touch-action: manipulation;
         }
     
         /* Level column */
         .target-table th:nth-child(3),
-        .target-table td:nth-child(3) {
-            min-width: 40px;
-            text-align: center;
+                                                                .target-table td:nth-child(3) {
+        text-align: center;
     }
 }
 
 /* Extra small screens (very small smartphones) */
 @media (max-width: 400px) {
     body {
-            font-size: 13px;
+        font-size: 13px;
     }
 
         .container {
-            padding: 6px;
+        padding: 4px;
     }
 
         header h1 {
-            font-size: 1.2rem;
+        font-size: 1.1rem;
     }
 
         .header-stats {
-            font-size: 0.75rem;
-            gap: 8px;
-    }
+    font-size: 0.72rem;
+                        gap: 8px;
     
-        /* Stats bar - 2 columns on very small screens */
-        .stat {
-            padding: 6px 10px;
-            min-width: calc(50% - 3px);
+/* Stats bar - 2 columns on very small screens */
+.stat {
     }
+                padding: 5px 8px;
+                min-width: calc(50% - 2px);
     
-        .stat-value {
-            font-size: 1rem;
-    }
+.stat-value {
     
-        .stat-label {
-            font-size: 0.65rem;
+                font-size: 1rem;
+    
+.stat-label {
+        font-size: 0.6rem;
         }
-    
+        
         /* User status bar */
     .user-status-bar {
-        gap: 6px;
-        padding: 6px;
-    }
-    
-    .user-status-item {
         gap: 4px;
-        flex-basis: calc(50% - 3px);
-        padding: 5px;
+            padding: 4px;
     }
-    
+
+    .user-status-item {
+        gap: 3px;
+            flex-basis: calc(50% - 2px);
+            padding: 4px;
+    }
+
     .user-status-label {
-        font-size: 0.7rem;
-        min-width: 28px;
+        font-size: 0.68rem;
+            min-width: 26px;
     }
-    
+
     .bar-container {
-        min-width: 70px;
-        height: 14px;
-    }
+    min-width: 60px;
+                height: 14px;
     
-        .bar-text {
-            font-size: 0.7rem;
+.bar-text {
+        font-size: 0.68rem;
         }
-    
+        
         .cooldown-item {
-            flex-basis: calc(33.33% - 4px);
-            min-width: 65px;
-            padding: 5px;
+        flex-basis: calc(33.33% - 3px);
+            min-width: 60px;
+            padding: 4px;
         }
+
     .cooldown-value,
     .status-state {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
     }
-    
-    .cooldown-label {
-        font-size: 0.65rem;
+
+        .cooldown-label {
     }
+                font-size: 0.62rem;
     
-        /* Chain display */
+/* Chain display */
     .chain-item {
-        padding: 5px 10px;
+        padding: 4px 8px;
             gap: 2px;
     }
-    
-    .chain-label {
-        font-size: 0.65rem;
+
+        .chain-label {
     }
+                font-size: 0.62rem;
     
-        .chain-count {
-            font-size: 0.9rem;
+.chain-count {
+        font-size: 0.85rem;
     }
-    
+
     .chain-timer {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
     }
-    
+
     /* View toggle buttons */
     .toggle-btn-compact {
         padding: 5px 10px;
-            font-size: 0.7rem;
+        font-size: 0.68rem;
         }
         
         /* Filter buttons */
+                                                                .filter-group {
+                                                                    min-width: calc(50% - 2px);
+                                                                }
         .filter-btn {
-            padding: 5px 10px;
-            font-size: 0.75rem;
-            min-width: 60px;
+            padding: 4px 5px;
+                font-size: 0.68rem;
+                min-width: 0;
         }
         
         .range-input {
-            width: 60px;
-            font-size: 0.75rem;
-            padding: 5px 6px;
+        width: 55px;
+            font-size: 0.72rem;
+            padding: 5px;
         }
         
         .range-select {
-            font-size: 0.75rem;
-            padding: 5px 6px;
+        font-size: 0.72rem;
+            padding: 5px;
         }
         
         .action-controls .btn {
             padding: 6px 10px;
-            font-size: 0.8rem;
+        font-size: 0.78rem;
         }
         
         /* Table adjustments */
         .target-table {
-            font-size: 0.7rem;
+        font-size: 0.68rem;
+            min-width: 540px;
         }
         
         .target-table th,
         .target-table td {
-            padding: 5px 6px;
-            font-size: 0.7rem;
+        padding: 5px 4px;
+            font-size: 0.68rem;
         }
         
-        /* KEEP Stats column visible even on very small screens */
+                                /* Narrower columns on tiny screens */
+                                .target-table th:nth-child(1),
+                                .target-table td:nth-child(1) {
+                                    width: 50px;
+                                }
+                
+                                .target-table th:nth-child(3),
+                                .target-table td:nth-child(3) {
+                                    width: 26px;
+                                }
         .target-table th:nth-child(4),
-        .target-table td:nth-child(4) {
-            display: table-cell !important;
-            min-width: 85px;
+                                .target-table td:nth-child(4) {
+                    width: 78px;
+                    }
+                    
+                    .target-table th:nth-child(5),
+                    .target-table td:nth-child(5) {
+                        width: 45px;
+                    }
+                    
+                    .target-table th:nth-child(6),
+                    .target-table td:nth-child(6) {
+                        width: 75px;
+                    }
+                    
+                    .target-table th:nth-child(7),
+                    .target-table td:nth-child(7) {
+                        width: 50px;
+                    }
+                    
+                    .target-table th:nth-child(8),
+                    .target-table td:nth-child(8) {
+                        width: 50px;
+                    }
+                    
+                    .profile-link {
+                        max-width: 75px;
         }
-        
+    
         .stats-cell {
             font-size: 0.65rem !important;
         }
-        
+    
         .stats-cell .stats-value {
-            font-size: 0.7rem !important;
+        font-size: 0.68rem !important;
         }
-        
-        .stats-cell .stats-age {
-            font-size: 0.6rem !important;
+                                                                .stats-source.ff-score {
+                                                                    font-size: 0.48rem !important;
         }
-        
+    
         .timer-cell {
-            min-width: 55px;
-            font-size: 0.7rem;
+        min-width: 50px;
+            font-size: 0.68rem;
         }
         
         .name-cell {
-            min-width: 110px;
-            font-size: 0.7rem;
+        min-width: 90px;
+            font-size: 0.68rem;
         }
         
         .player-links a,
         .player-links button {
-            font-size: 0.65rem;
-            padding: 2px 5px;
+        font-size: 0.62rem;
+            padding: 2px 4px;
         }
         
         .online-cell {
-            min-width: 65px;
-            font-size: 0.7rem;
+        min-width: 45px;
+            font-size: 0.68rem;
         }
         
         .online-text {
-            font-size: 0.65rem;
+        font-size: 0.62rem;
         }
         
         .reason-cell {
-            max-width: 90px;
-            font-size: 0.65rem;
+        max-width: 80px;
+            font-size: 0.62rem;
         }
         
         .claim-cell {
-        font-size: 0.65rem;
-        min-width: 55px;
+        font-size: 0.62rem;
+            min-width: 48px;
         }
-        
-        .btn-small {
-            padding: 5px 8px;
-            font-size: 0.7rem;
-            min-height: 30px;
+                                                                .btn-claim,
+                                                                .btn-unclaim {
+                                                                    padding: 4px 6px;
+                                                                    font-size: 0.68rem;
+                                                                    min-height: 26px;
     }
-    
-    /* Config panel on mobile */
+
+                                                                /* Config panel on tiny screens */
         .config-form {
         gap: 8px;
     }
-    
+
     .form-group input {
         font-size: 13px;
-            padding: 6px;
+        padding: 6px;
     }
 }
 
@@ -1813,7 +1956,7 @@ header h1 {
     padding: 6px 10px;
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
-        white-space: nowrap;
+    white-space: nowrap;
     }
     
     /* Column sizing */

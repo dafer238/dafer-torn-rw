@@ -405,22 +405,26 @@ async function checkChainWatch() {
             }
         }
         
+        // Reset checked targets that went back to hospital (allow re-trigger when they come out)
+        state.chainWatchCheckedTargets.forEach(id => {
+            const info = state.targets.find(t => t.user_id === parseInt(id));
+            if (info && info.hospital_status !== 'out') {
+                state.chainWatchCheckedTargets.delete(id);
+            }
+        });
+        
         // Find the first target that is NOT in hospital
         for (const { id: targetId, data: targetData } of matchingTargets) {
             // Check if target is attackable by looking at our loaded targets
             const targetInfo = state.targets.find(t => t.user_id === parseInt(targetId));
             
-            // Target is attackable if: out of hospital AND not traveling AND not in jail
-            const isInJail = targetInfo && targetInfo.travel_destination && 
-                           targetInfo.travel_destination.toLowerCase().includes('jail');
-            
+            // Target is attackable if: out of hospital AND not traveling
             const isAttackable = targetInfo && 
                                  targetInfo.hospital_status === 'out' && 
-                                 !targetInfo.traveling &&
-                                 !isInJail;
+                                 !targetInfo.traveling;
             
             if (isAttackable) {
-                // Mark as checked so we don't open again
+                // Mark as checked so we don't open again (until they go back to hospital)
                 state.chainWatchCheckedTargets.add(targetId);
                 
                 // Open attack page
@@ -435,7 +439,7 @@ async function checkChainWatch() {
             }
         }
         
-        // Clean up checked targets that are no longer in the list
+        // Clean up checked targets that are no longer in the target list
         const currentTargetIds = new Set(Object.keys(data.targets));
         state.chainWatchCheckedTargets.forEach(id => {
             if (!currentTargetIds.has(id)) {
@@ -812,7 +816,8 @@ async function fetchStatus(forceRefresh = false) {
 
 function updateConnectionStatus(connected, message = null) {
     if (connected) {
-        elements.connectionStatus.textContent = '● Connected';
+        const nameLabel = state.userName ? ` as ${state.userName}` : '';
+        elements.connectionStatus.textContent = `● Connected${nameLabel}`;
         elements.connectionStatus.className = 'status-indicator connected';
     } else {
         elements.connectionStatus.textContent = message ? `● ${message}` : '● Disconnected';
@@ -1106,9 +1111,38 @@ function renderTargets() {
             btn.dataset.targetId, 
             btn.dataset.targetName, 
             btn.dataset.onlineStatus,
-            btn.dataset.stats
+            btn.dataset.stats,
+            btn.dataset.ffScore
         ));
     });
+}
+
+function getFairFightColor(ff) {
+    if (ff === null || ff === undefined) return { color: '#4fc3f7', bg: 'rgba(79,195,247,0.15)' };
+    const stops = [
+        { val: 1.0, r: 33,  g: 150, b: 243 },  // Blue
+        { val: 2.0, r: 0,   g: 188, b: 212 },  // Cyan
+        { val: 3.0, r: 76,  g: 175, b: 80  },  // Green
+        { val: 4.0, r: 255, g: 193, b: 7   },  // Yellow
+        { val: 5.0, r: 244, g: 67,  b: 54  },  // Red
+    ];
+    let r, g, b;
+    if (ff <= stops[0].val) {
+        r = stops[0].r; g = stops[0].g; b = stops[0].b;
+    } else if (ff >= stops[stops.length - 1].val) {
+        r = stops[stops.length - 1].r; g = stops[stops.length - 1].g; b = stops[stops.length - 1].b;
+    } else {
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (ff <= stops[i + 1].val) {
+                const t = (ff - stops[i].val) / (stops[i + 1].val - stops[i].val);
+                r = Math.round(stops[i].r + t * (stops[i + 1].r - stops[i].r));
+                g = Math.round(stops[i].g + t * (stops[i + 1].g - stops[i].g));
+                b = Math.round(stops[i].b + t * (stops[i + 1].b - stops[i].b));
+                break;
+            }
+        }
+    }
+    return { color: `rgb(${r},${g},${b})`, bg: `rgba(${r},${g},${b},0.15)` };
 }
 
 function renderTargetRow(target) {
@@ -1174,7 +1208,13 @@ function renderTargetRow(target) {
         }
         
         statsHtml = `<span class="stats-value ffscouter" title="${tooltip}">${displayStatsFormatted}</span>`;
-        statsHtml += `<span class="stats-source ff">FF</span>`;
+        const ffScoreVal = target.ff_fair_fight;
+        if (ffScoreVal !== null && ffScoreVal !== undefined) {
+            const ffColors = getFairFightColor(ffScoreVal);
+            statsHtml += `<span class="stats-source ff-score" style="color:${ffColors.color};background:${ffColors.bg}">${ffScoreVal.toFixed(2)}</span>`;
+        } else {
+            statsHtml += `<span class="stats-source ff">FF</span>`;
+        }
     } else if (hasYata) {
         displayStats = target.yata_estimated_stats;
         displayStatsFormatted = target.yata_estimated_stats_formatted || formatStats(displayStats);
@@ -1224,24 +1264,29 @@ function renderTargetRow(target) {
             <td class="${timerClass}"></td>
             <td class="name-cell">
                 <div class="player-links">
+                    <a href="https://www.torn.com/loader.php?sid=attack&user2ID=${target.user_id}" 
+                       target="_blank" rel="noopener" class="attack-link" title="Attack">⚔</a>
                     <a href="https://www.torn.com/profiles.php?XID=${target.user_id}" 
                        target="_blank" rel="noopener" class="profile-link">
                         ${escapeHtml(target.name)}
                     </a>
-                    <a href="https://www.torn.com/loader.php?sid=attack&user2ID=${target.user_id}" 
-                       target="_blank" rel="noopener" class="attack-link" title="Attack">⚔</a>
+                    ${badges}
+                    <span class="player-links-spacer"></span>
                     <button class="copy-target-btn" data-target-id="${target.user_id}" 
                             data-target-name="${escapeHtml(target.name)}" 
                             data-online-status="${onlineClass}"
-                            data-stats="${hasStats ? displayStatsFormatted : '-'}" title="Copy target info">📋</button>
-                    ${badges}
+                            data-stats="${hasStats ? displayStatsFormatted : '-'}"
+                            data-ff-score="${hasFF && target.ff_fair_fight != null ? target.ff_fair_fight.toFixed(2) : ''}"
+                            title="Copy target info">📋</button>
                 </div>
             </td>
             <td>${target.level}</td>
             <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsHtml}</td>
             <td class="online-cell">
-                <span class="online-dot ${onlineClass}"></span>
-                <span class="online-text">${onlineText}</span>
+                <div class="online-content">
+                    <span class="online-dot ${onlineClass}"></span>
+                    <span class="online-text">${onlineText}</span>
+                </div>
             </td>
             <td class="reason-cell" title="${escapeHtml(target.hospital_reason || '')}">
                 ${escapeHtml(target.hospital_reason || '-')}
@@ -1358,7 +1403,7 @@ async function handleUnclaim(targetId) {
     fetchStatus(true);
 }
 
-function handleCopyTarget(targetId, targetName, onlineStatus, stats) {
+function handleCopyTarget(targetId, targetName, onlineStatus, stats, ffScore) {
     const profileUrl = `https://www.torn.com/profiles.php?XID=${targetId}`;
     const attackUrl = `https://www.torn.com/loader2.php?sid=getInAttack&user2ID=${targetId}`;
     
@@ -1370,8 +1415,12 @@ function handleCopyTarget(targetId, targetName, onlineStatus, stats) {
         circle = '🟡'; // Yellow circle
     }
     
+    // Build stats label with FF score if available
+    let statsLabel = stats;
+    if (ffScore) statsLabel += ` | FF ${ffScore}`;
+    
     // Format: ⚫ <a href="profile_url">Name (stats)</a> - <a href="attack_url">Attack</a>
-    const html = `${circle} <a href="${profileUrl}">${targetName} (${stats})</a> - <a href="${attackUrl}">Attack</a>`;
+    const html = `${circle} <a href="${profileUrl}">${targetName} (${statsLabel})</a> - <a href="${attackUrl}">Attack</a>`;
     
     navigator.clipboard.writeText(html).then(() => {
         showToast('Target info copied!', 'success');
