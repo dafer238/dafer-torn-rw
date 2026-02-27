@@ -13,7 +13,7 @@ from .models import (
     FactionInfo,
 )
 
-from .cache import hospital_cache, player_cache, faction_cache, rate_limiter, yata_cache, Cache
+from .cache import hospital_cache, player_cache, faction_cache, rate_limiter, yata_cache, Cache, DiskCache
 
 from .claims import claim_manager, ClaimManager, init_claim_manager, get_claim_manager
 
@@ -42,6 +42,7 @@ __all__ = [
     "faction_cache",
     "rate_limiter",
     "yata_cache",
+    "DiskCache",
     "Cache",
     # Claims
     "claim_manager",

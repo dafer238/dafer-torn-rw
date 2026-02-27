@@ -70,14 +70,19 @@ class TornClient:
     Async client for Torn API with caching and rate limiting.
     """
 
-    def __init__(self, api_keys: list[str]):
+    def __init__(self, api_keys: list[str], http_client: Optional[httpx.AsyncClient] = None):
         """
         Initialize with one or more API keys.
         Multiple keys allow for higher effective polling rates.
+
+        Args:
+            api_keys: List of Torn API keys
+            http_client: Shared httpx.AsyncClient (if None, creates its own)
         """
         self.api_keys = api_keys
         self.current_key_index = 0
-        self.client = httpx.AsyncClient(timeout=10.0)
+        self._shared_client = http_client is not None
+        self.client = http_client or httpx.AsyncClient(timeout=10.0)
         self.api_calls_remaining = 100  # Track API calls remaining
 
         # Track per-key rate limiting
@@ -395,8 +400,9 @@ class TornClient:
         return False
 
     async def close(self):
-        """Close the HTTP client."""
-        await self.client.aclose()
+        """Close the HTTP client (only if we own it)."""
+        if not self._shared_client:
+            await self.client.aclose()
 
 
 # Singleton client instance (initialized in main.py)

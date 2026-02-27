@@ -10,6 +10,9 @@ env/
 data/
 *.json.tmp
 
+# Disk cache (SQLite-backed)
+.cache/
+
 # Python
 __pycache__/
 *.py[cod]

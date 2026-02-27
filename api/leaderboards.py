@@ -1,13 +1,15 @@
 """
 Leaderboard tracking for faction members.
 Tracks xanax usage, overdoses, gym gains, and hospital time.
-Pure in-memory storage for VPS deployment.
+Disk-backed storage via DiskCache to minimize RAM usage.
 """
 
 import time
 from typing import Optional
 from pydantic import BaseModel
 import httpx
+
+from .cache import DiskCache
 
 
 class UserStats(BaseModel):
@@ -47,18 +49,24 @@ class Leaderboards(BaseModel):
     last_updated: int = 0
 
 
-# In-memory cache for stats and leaderboards
-stats_cache: dict[int, UserStats] = {}  # player_id -> latest stats
-stats_history: dict[int, list[UserStats]] = {}  # player_id -> historical snapshots
+# Disk-backed storage for stats (minimizes RAM, persists across restarts)
+_stats_disk = DiskCache("leaderboard_stats", default_ttl=365 * 24 * 3600)  # 1 year TTL
+
+# Lightweight in-memory set for quick "has player" checks
+# This is rebuilt from disk on first leaderboard calculation
+_known_player_ids: set[int] = set()
+
 leaderboards_cache: Optional[Leaderboards] = None
 leaderboards_last_updated: float = 0
 LEADERBOARDS_UPDATE_INTERVAL = 3600  # 1 hour
 
 
-async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Optional[UserStats]:
+async def fetch_user_stats(api_key: str, player_id: Optional[int] = None, http_client=None) -> Optional[UserStats]:
     """Fetch user stats from Torn API."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        _own_client = http_client is None
+        client = http_client or httpx.AsyncClient(timeout=10.0)
+        try:
             response = await client.get(
                 "https://api.torn.com/user/",
                 params={
@@ -86,6 +94,9 @@ async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Opt
                 xanax_taken=xanax_taken,
                 overdoses=overdoses,
             )
+        finally:
+            if _own_client:
+                await client.aclose()
 
     except Exception as e:
         print(f"Error fetching user stats: {e}")
@@ -93,22 +104,51 @@ async def fetch_user_stats(api_key: str, player_id: Optional[int] = None) -> Opt
 
 
 async def store_user_stats(stats: UserStats):
-    """Store user stats in memory. Also append to history."""
-    stats_cache[stats.player_id] = stats
+    """Store user stats to disk. Also append to history."""
+    pid = stats.player_id
+    stats_dict = stats.model_dump()
 
-    # Append to in-memory history
-    if stats.player_id not in stats_history:
-        stats_history[stats.player_id] = []
-    stats_history[stats.player_id].append(stats)
+    # Store latest stats
+    _stats_disk.set(f"current:{pid}", stats_dict)
 
-    # Cap history at 1000 entries per player to avoid unbounded growth
-    if len(stats_history[stats.player_id]) > 1000:
-        stats_history[stats.player_id] = stats_history[stats.player_id][-1000:]
+    # Append to history
+    history = _stats_disk.get(f"history:{pid}") or []
+    history.append(stats_dict)
+    # Cap history at 1000 entries per player
+    if len(history) > 1000:
+        history = history[-1000:]
+    _stats_disk.set(f"history:{pid}", history)
+
+    # Track player ID
+    _known_player_ids.add(pid)
+    player_ids = _stats_disk.get("_player_ids") or set()
+    player_ids.add(pid)
+    _stats_disk.set("_player_ids", player_ids)
+
+
+def has_player_stats(player_id: int) -> bool:
+    """Check if we have stats for a player (fast in-memory check)."""
+    if player_id in _known_player_ids:
+        return True
+    # Fallback to disk check
+    if _stats_disk.get(f"current:{player_id}") is not None:
+        _known_player_ids.add(player_id)
+        return True
+    return False
 
 
 async def load_stats_from_storage() -> dict[int, list[UserStats]]:
-    """Load all user stats history from in-memory store."""
-    return stats_history
+    """Load all user stats history from disk."""
+    result = {}
+    player_ids = _stats_disk.get("_player_ids") or set()
+    for pid in player_ids:
+        history_dicts = _stats_disk.get(f"history:{pid}")
+        if history_dicts:
+            try:
+                result[pid] = [UserStats(**d) for d in history_dicts]
+            except Exception as e:
+                print(f"Error loading stats for player {pid}: {e}")
+    return result
 
 
 def calculate_delta(current: int, past: int) -> int:
@@ -130,15 +170,23 @@ async def calculate_leaderboards() -> Leaderboards:
     month_ago = now - (30 * 24 * 3600)
     year_ago = now - (365 * 24 * 3600)
 
-    print(f"Calculating leaderboards... Local cache has {len(stats_cache)} players")
+    player_ids = _stats_disk.get("_player_ids") or set()
 
-    # Load all stats from persistent storage
+    print(f"Calculating leaderboards... Disk has {len(player_ids)} players")
+
+    # Load all stats from disk
     all_stats = await load_stats_from_storage()
 
-    # If no storage data, use local cache
+    # If no storage data, use current stats from disk
     if not all_stats:
-        print("No storage data, using local cache")
-        all_stats = {pid: [stats] for pid, stats in stats_cache.items()}
+        print("No history data, using current stats")
+        for pid in player_ids:
+            current_dict = _stats_disk.get(f"current:{pid}")
+            if current_dict:
+                try:
+                    all_stats[pid] = [UserStats(**current_dict)]
+                except Exception:
+                    pass
     else:
         print(f"Loaded {len(all_stats)} players from storage")
 
@@ -241,17 +289,17 @@ async def get_leaderboards(force_refresh: bool = False) -> Leaderboards:
         print("Recalculating leaderboards...")
         leaderboards_cache = await calculate_leaderboards()
         leaderboards_last_updated = now
-        print(f"Leaderboards calculated with {len(stats_cache)} players in cache")
+        print(f"Leaderboards calculated with {len(_known_player_ids)} players on disk")
     else:
         print(f"Using cached leaderboards (age: {now - leaderboards_last_updated:.0f}s)")
 
     return leaderboards_cache
 
 
-async def update_user_stats_from_api_call(api_key: str, player_id: int):
+async def update_user_stats_from_api_call(api_key: str, player_id: int, http_client=None):
     """Update user stats when they make an API call (passive collection)."""
     print(f"Collecting stats for player {player_id}...")
-    stats = await fetch_user_stats(api_key, player_id)
+    stats = await fetch_user_stats(api_key, player_id, http_client=http_client)
     if stats:
         print(
             f"Stats collected for {stats.player_name}: xanax={stats.xanax_taken}, overdoses={stats.overdoses}"

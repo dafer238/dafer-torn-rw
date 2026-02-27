@@ -24,7 +24,8 @@ class YATAError(Exception):
 
 
 async def fetch_battle_stats_estimates(
-    target_ids: list[int], torn_api_key: str, timeout: float = 30.0
+    target_ids: list[int], torn_api_key: str, timeout: float = 30.0,
+    http_client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[int, Dict]:
     """
     Fetch battle stats estimates from YATA for multiple targets.
@@ -55,7 +56,11 @@ async def fetch_battle_stats_estimates(
     results = {}
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # Use shared client if provided, otherwise create one
+        _own_client = http_client is None
+        client = http_client or httpx.AsyncClient(timeout=timeout)
+
+        try:
             # YATA battle stats endpoint: GET /api/v1/bs/<target_id>/?key=<api_key>
             # Note: Trailing slash is required!
             # We need to make individual requests for each target
@@ -114,6 +119,10 @@ async def fetch_battle_stats_estimates(
                     continue
 
             return results
+
+        finally:
+            if _own_client:
+                await client.aclose()
 
     except httpx.HTTPError as e:
         print(f"HTTP error fetching YATA estimates: {e}")

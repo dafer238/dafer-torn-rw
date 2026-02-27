@@ -3,7 +3,7 @@ Faction Overview API
 
 Stores and retrieves faction member profile data for leadership view.
 Only accessible to whitelisted leadership IDs.
-Pure in-memory storage for VPS deployment.
+Disk-backed storage via DiskCache to minimize RAM usage.
 """
 
 import time
@@ -11,9 +11,11 @@ from typing import List
 
 from pydantic import BaseModel
 
+from .cache import DiskCache
 
-# In-memory store: player_id -> FactionMemberProfile dict
-_faction_profiles: dict[int, dict] = {}
+
+# Disk-backed store for faction profiles (24-hour TTL)
+_profiles_disk = DiskCache("faction_profiles", default_ttl=86400)
 
 
 class FactionMemberProfile(BaseModel):
@@ -109,7 +111,13 @@ async def store_faction_member_profile(player_id: int, torn_api_data: dict):
             last_updated=int(time.time()),
         )
 
-        _faction_profiles[player_id] = profile.model_dump()
+        # Store to disk
+        _profiles_disk.set(f"profile:{player_id}", profile.model_dump())
+
+        # Update index of known player IDs
+        known_ids = _profiles_disk.get("_profile_ids") or set()
+        known_ids.add(player_id)
+        _profiles_disk.set("_profile_ids", known_ids)
 
     except Exception as e:
         print(f"Error storing faction profile for {player_id}: {e}")
@@ -117,17 +125,20 @@ async def store_faction_member_profile(player_id: int, torn_api_data: dict):
 
 async def get_all_faction_profiles() -> List[FactionMemberProfile]:
     """
-    Get all stored faction member profiles.
+    Get all stored faction member profiles from disk.
     Returns list of profiles sorted by last action (most recent first).
     """
     try:
         profiles = []
-        for profile_data in _faction_profiles.values():
-            try:
-                profile = FactionMemberProfile(**profile_data)
-                profiles.append(profile)
-            except Exception as e:
-                print(f"Error parsing profile: {e}")
+        known_ids = _profiles_disk.get("_profile_ids") or set()
+        for pid in known_ids:
+            profile_data = _profiles_disk.get(f"profile:{pid}")
+            if profile_data:
+                try:
+                    profile = FactionMemberProfile(**profile_data)
+                    profiles.append(profile)
+                except Exception as e:
+                    print(f"Error parsing profile for {pid}: {e}")
 
         profiles.sort(key=lambda p: p.last_action, reverse=True)
         return profiles

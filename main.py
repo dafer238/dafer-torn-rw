@@ -36,10 +36,12 @@ from api import (
     fetch_battle_stats_estimates,
     YATAError,
     yata_cache,
+    DiskCache,
 )
 from api.leaderboards import (
     get_leaderboards,
     update_user_stats_from_api_call,
+    has_player_stats,
     Leaderboards,
 )
 from api.faction_overview import (
@@ -47,6 +49,11 @@ from api.faction_overview import (
     get_all_faction_profiles,
     FactionMemberProfile,
 )
+
+# Shared HTTP client - created in lifespan, reused across ALL requests.
+# This is the single biggest memory fix: avoids creating/destroying
+# connection pools + SSL contexts 80 times/second.
+shared_http_client: Optional[httpx.AsyncClient] = None
 
 
 # Load environment variables
@@ -169,34 +176,33 @@ async def validate_faction_membership(
         (is_valid, error_message, player_id)
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://api.torn.com/user/",
-                params={
-                    "selections": "profile",
-                    "key": api_key,
-                },
+        response = await shared_http_client.get(
+            "https://api.torn.com/user/",
+            params={
+                "selections": "profile",
+                "key": api_key,
+            },
+        )
+        data = response.json()
+
+        if "error" in data:
+            error = data["error"]
+            if error.get("code") == 2:
+                return False, "Invalid API key", None
+            return False, error.get("error", "API error"), None
+
+        player_id = data.get("player_id")
+        faction_data = data.get("faction", {})
+        user_faction_id = faction_data.get("faction_id")
+
+        if user_faction_id != allowed_faction_id:
+            return (
+                False,
+                f"Access denied: You must be a member of faction {allowed_faction_id} to use this tracker",
+                player_id,
             )
-            data = response.json()
 
-            if "error" in data:
-                error = data["error"]
-                if error.get("code") == 2:
-                    return False, "Invalid API key", None
-                return False, error.get("error", "API error"), None
-
-            player_id = data.get("player_id")
-            faction_data = data.get("faction", {})
-            user_faction_id = faction_data.get("faction_id")
-
-            if user_faction_id != allowed_faction_id:
-                return (
-                    False,
-                    f"Access denied: You must be a member of faction {allowed_faction_id} to use this tracker",
-                    player_id,
-                )
-
-            return True, "", player_id
+        return True, "", player_id
 
     except httpx.HTTPError as e:
         return False, f"Connection error: {str(e)}", None
@@ -213,16 +219,15 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
     if allowed_faction_id is None:
         # Still need to get player_id for claims - do a quick validation
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    "https://api.torn.com/user/",
-                    params={"selections": "profile", "key": x_api_key},
-                )
-                data = response.json()
-                if "error" in data:
-                    raise HTTPException(status_code=401, detail="Invalid API key")
-                player_id = data.get("player_id", 0)
-                return x_api_key, player_id
+            response = await shared_http_client.get(
+                "https://api.torn.com/user/",
+                params={"selections": "profile", "key": x_api_key},
+            )
+            data = response.json()
+            if "error" in data:
+                raise HTTPException(status_code=401, detail="Invalid API key")
+            player_id = data.get("player_id", 0)
+            return x_api_key, player_id
         except httpx.HTTPError:
             raise HTTPException(status_code=502, detail="Failed to validate API key")
 
@@ -251,7 +256,7 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
         last_update = stats_collection_cache.get(player_id, 0)
         if (now - last_update) >= STATS_COLLECTION_INTERVAL:
             stats_collection_cache[player_id] = now
-            asyncio.create_task(update_user_stats_from_api_call(x_api_key, player_id))
+            asyncio.create_task(update_user_stats_from_api_call(x_api_key, player_id, http_client=shared_http_client))
 
     return x_api_key, player_id or 0
 
@@ -259,13 +264,17 @@ async def check_faction_access(x_api_key: str = Header(None, alias="X-API-Key"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
+    global shared_http_client
+
     # Startup
-    # Note: API keys are now provided per-request by users
     cache_ttl = get_cache_ttl()
     poll_interval = get_frontend_poll_interval()
     print(
         f"Torn War Tracker starting on VPS (cache_ttl={cache_ttl}s, frontend_poll={poll_interval}ms)"
     )
+
+    # Create shared HTTP client (reused across ALL requests)
+    shared_http_client = httpx.AsyncClient(timeout=15.0)
 
     # Configure cache TTL from env
     hospital_cache.default_ttl = cache_ttl
@@ -283,7 +292,59 @@ async def lifespan(app: FastAPI):
     else:
         print("No faction restriction - all valid API keys")
 
+    # Start periodic cache cleanup task
+    cleanup_task = asyncio.create_task(periodic_cache_cleanup())
+
     yield
+
+    # Shutdown
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+    # Close shared HTTP client
+    await shared_http_client.aclose()
+    shared_http_client = None
+
+    # Close disk caches
+    yata_cache.close()
+    tornstats_disk.close()
+    print("Torn War Tracker shutdown complete")
+
+
+async def periodic_cache_cleanup():
+    """Background task to periodically clean expired entries from all caches."""
+    while True:
+        try:
+            await asyncio.sleep(60)  # Run every 60 seconds
+            # Clean in-memory caches
+            hospital_cache.cleanup_expired()
+            from api.cache import player_cache, faction_cache
+            player_cache.cleanup_expired()
+            faction_cache.cleanup_expired()
+            # Clean disk caches
+            yata_cache.cleanup_expired()
+            tornstats_disk.cleanup_expired()
+            # Clean stale validation/throttle caches
+            now = time.time()
+            stale_validations = [
+                pid for pid, (_, ts) in faction_validation_cache.items()
+                if (now - ts) > FACTION_CACHE_TTL
+            ]
+            for pid in stale_validations:
+                del faction_validation_cache[pid]
+            stale_stats = [
+                pid for pid, ts in stats_collection_cache.items()
+                if (now - ts) > STATS_COLLECTION_INTERVAL * 2
+            ]
+            for pid in stale_stats:
+                del stats_collection_cache[pid]
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Cache cleanup error: {e}")
 
 
 # Simple cache for claims
@@ -301,6 +362,9 @@ STATS_COLLECTION_INTERVAL = 3600  # Only collect stats once per hour per user
 # Cache for faction overview
 faction_overview_cache = {"data": None, "timestamp": 0}
 FACTION_OVERVIEW_CACHE_TTL = 10  # Cache faction overview for 10 seconds
+
+# Disk-backed cache for TornStats spy data (can be very large)
+tornstats_disk = DiskCache("tornstats", default_ttl=300)  # 5 minute TTL
 
 # API key pool for distributing YATA requests
 api_key_pool: list[str] = []
@@ -362,7 +426,7 @@ async def get_api_keys_for_yata(count: int) -> list[str]:
 
 
 def save_yata_estimate_to_memory(target_id: int, estimate: dict):
-    """Save YATA estimate to in-memory cache."""
+    """Save YATA estimate to disk cache."""
     cache_key = f"yata_estimate_{target_id}"
     yata_cache.set(cache_key, estimate, ttl=604800)  # 7 days
 
@@ -370,7 +434,7 @@ def save_yata_estimate_to_memory(target_id: int, estimate: dict):
 async def enrich_targets_with_yata_estimates(targets: list[PlayerStatus], api_key: str):
     """
     Enrich target players with YATA battle stats estimates.
-    All data lives in memory - no external storage.
+    Estimates are stored on disk to minimize RAM.
     Fetches missing data in background to avoid blocking.
     """
     if not targets:
@@ -422,7 +486,9 @@ async def fetch_and_cache_yata_estimates(targets: list[PlayerStatus], api_key: s
             key_to_use = available_keys[i % len(available_keys)]
 
             try:
-                result = await fetch_battle_stats_estimates([target.user_id], key_to_use)
+                result = await fetch_battle_stats_estimates(
+                    [target.user_id], key_to_use, http_client=shared_http_client
+                )
                 if target.user_id in result:
                     estimate = result[target.user_id]
 
@@ -497,8 +563,8 @@ async def get_war_status(
     now = int(time.time())
     claim_mgr = get_claim_manager()
 
-    # Create a temporary client with user's API key
-    client = TornClient([x_api_key])
+    # Create a client that reuses the shared HTTP connection pool
+    client = TornClient([x_api_key], http_client=shared_http_client)
 
     try:
         # Get enemy faction IDs
@@ -593,7 +659,7 @@ async def get_war_status(
         return response
 
     finally:
-        # Clean up the temporary client
+        # Close the client (won't close shared_http_client)
         await client.close()
 
 
@@ -606,138 +672,137 @@ async def get_my_status(auth: tuple[str, int] = Depends(check_faction_access)):
     x_api_key, player_id = auth
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Fetch user data and faction chain in parallel
-            user_task = client.get(
-                "https://api.torn.com/user/",
-                params={
-                    "selections": "profile,bars,cooldowns,travel",
-                    "key": x_api_key,
-                },
+        # Fetch user data and faction chain in parallel using shared client
+        user_task = shared_http_client.get(
+            "https://api.torn.com/user/",
+            params={
+                "selections": "profile,bars,cooldowns,travel",
+                "key": x_api_key,
+            },
+        )
+        faction_task = shared_http_client.get(
+            "https://api.torn.com/faction/",
+            params={
+                "selections": "chain",
+                "key": x_api_key,
+            },
+        )
+
+        user_response, faction_response = await asyncio.gather(
+            user_task, faction_task, return_exceptions=True
+        )
+
+        # Process user data
+        if isinstance(user_response, Exception):
+            raise HTTPException(status_code=502, detail="Failed to fetch user data")
+
+        data = user_response.json()
+
+        if "error" in data:
+            error = data["error"]
+            raise HTTPException(
+                status_code=401 if error.get("code") == 2 else 400,
+                detail=error.get("error", "API error"),
             )
-            faction_task = client.get(
-                "https://api.torn.com/faction/",
-                params={
-                    "selections": "chain",
-                    "key": x_api_key,
-                },
-            )
 
-            user_response, faction_response = await asyncio.gather(
-                user_task, faction_task, return_exceptions=True
-            )
+        # Parse the response
+        now = int(time.time())
 
-            # Process user data
-            if isinstance(user_response, Exception):
-                raise HTTPException(status_code=502, detail="Failed to fetch user data")
+        # Health
+        life = data.get("life", {})
+        health_current = life.get("current", 0)
+        health_max = life.get("maximum", 100)
 
-            data = user_response.json()
+        # Energy
+        energy = data.get("energy", {})
+        energy_current = energy.get("current", 0)
+        energy_max = energy.get("maximum", 100)
 
-            if "error" in data:
-                error = data["error"]
-                raise HTTPException(
-                    status_code=401 if error.get("code") == 2 else 400,
-                    detail=error.get("error", "API error"),
-                )
+        # Nerve
+        nerve = data.get("nerve", {})
+        nerve_current = nerve.get("current", 0)
+        nerve_max = nerve.get("maximum", 50)
 
-            # Parse the response
-            now = int(time.time())
+        # Happy
+        happy = data.get("happy", {})
+        happy_current = happy.get("current", 0)
+        happy_max = happy.get("maximum", 1000)
 
-            # Health
-            life = data.get("life", {})
-            health_current = life.get("current", 0)
-            health_max = life.get("maximum", 100)
+        # Cooldowns
+        cooldowns = data.get("cooldowns", {})
+        drug_cd = cooldowns.get("drug", 0)
+        medical_cd = cooldowns.get("medical", 0)
+        booster_cd = cooldowns.get("booster", 0)
 
-            # Energy
-            energy = data.get("energy", {})
-            energy_current = energy.get("current", 0)
-            energy_max = energy.get("maximum", 100)
+        # Travel status
+        travel = data.get("travel", {})
+        is_traveling = travel.get("time_left", 0) > 0
+        travel_destination = travel.get("destination", "")
+        travel_time_left = travel.get("time_left", 0)
 
-            # Nerve
-            nerve = data.get("nerve", {})
-            nerve_current = nerve.get("current", 0)
-            nerve_max = nerve.get("maximum", 50)
+        # Status (hospital, jail, etc.)
+        status = data.get("status", {})
+        status_state = status.get("state", "Okay")
+        status_until = status.get("until", 0)
 
-            # Happy
-            happy = data.get("happy", {})
-            happy_current = happy.get("current", 0)
-            happy_max = happy.get("maximum", 1000)
+        # Chain data
+        chain_data = {"current": 0, "timeout": 0, "max": 0, "modifier": 1}
+        if not isinstance(faction_response, Exception):
+            faction_data = faction_response.json()
+            if "chain" in faction_data:
+                chain = faction_data["chain"]
+                chain_data = {
+                    "current": chain.get("current", 0),
+                    "timeout": chain.get("timeout", 0),
+                    "max": chain.get("max", 0),
+                    "modifier": chain.get("modifier", 1),
+                    "cooldown": chain.get("cooldown", 0),
+                }
 
-            # Cooldowns
-            cooldowns = data.get("cooldowns", {})
-            drug_cd = cooldowns.get("drug", 0)
-            medical_cd = cooldowns.get("medical", 0)
-            booster_cd = cooldowns.get("booster", 0)
+        # Store faction member profile for leadership view (async, non-blocking)
+        asyncio.create_task(store_faction_member_profile(player_id, data))
 
-            # Travel status
-            travel = data.get("travel", {})
-            is_traveling = travel.get("time_left", 0) > 0
-            travel_destination = travel.get("destination", "")
-            travel_time_left = travel.get("time_left", 0)
-
-            # Status (hospital, jail, etc.)
-            status = data.get("status", {})
-            status_state = status.get("state", "Okay")
-            status_until = status.get("until", 0)
-
-            # Chain data
-            chain_data = {"current": 0, "timeout": 0, "max": 0, "modifier": 1}
-            if not isinstance(faction_response, Exception):
-                faction_data = faction_response.json()
-                if "chain" in faction_data:
-                    chain = faction_data["chain"]
-                    chain_data = {
-                        "current": chain.get("current", 0),
-                        "timeout": chain.get("timeout", 0),
-                        "max": chain.get("max", 0),
-                        "modifier": chain.get("modifier", 1),
-                        "cooldown": chain.get("cooldown", 0),
-                    }
-
-            # Store faction member profile for leadership view (async, non-blocking)
-            asyncio.create_task(store_faction_member_profile(player_id, data))
-
-            return {
-                "name": data.get("name", "Unknown"),
-                "player_id": data.get("player_id", 0),
-                "level": data.get("level", 0),
-                "health": {
-                    "current": health_current,
-                    "max": health_max,
-                    "percent": round(health_current / health_max * 100) if health_max > 0 else 0,
-                },
-                "energy": {
-                    "current": energy_current,
-                    "max": energy_max,
-                    "percent": round(energy_current / energy_max * 100) if energy_max > 0 else 0,
-                },
-                "nerve": {
-                    "current": nerve_current,
-                    "max": nerve_max,
-                    "percent": round(nerve_current / nerve_max * 100) if nerve_max > 0 else 0,
-                },
-                "happy": {
-                    "current": happy_current,
-                    "max": happy_max,
-                    "percent": round(happy_current / happy_max * 100) if happy_max > 0 else 0,
-                },
-                "cooldowns": {
-                    "drug": drug_cd,
-                    "medical": medical_cd,
-                    "booster": booster_cd,
-                },
-                "travel": {
-                    "traveling": is_traveling,
-                    "destination": travel_destination,
-                    "time_left": travel_time_left,
-                },
-                "status": {
-                    "state": status_state,
-                    "until": status_until,
-                },
-                "chain": chain_data,
-                "timestamp": now,
-            }
+        return {
+            "name": data.get("name", "Unknown"),
+            "player_id": data.get("player_id", 0),
+            "level": data.get("level", 0),
+            "health": {
+                "current": health_current,
+                "max": health_max,
+                "percent": round(health_current / health_max * 100) if health_max > 0 else 0,
+            },
+            "energy": {
+                "current": energy_current,
+                "max": energy_max,
+                "percent": round(energy_current / energy_max * 100) if energy_max > 0 else 0,
+            },
+            "nerve": {
+                "current": nerve_current,
+                "max": nerve_max,
+                "percent": round(nerve_current / nerve_max * 100) if nerve_max > 0 else 0,
+            },
+            "happy": {
+                "current": happy_current,
+                "max": happy_max,
+                "percent": round(happy_current / happy_max * 100) if happy_max > 0 else 0,
+            },
+            "cooldowns": {
+                "drug": drug_cd,
+                "medical": medical_cd,
+                "booster": booster_cd,
+            },
+            "travel": {
+                "traveling": is_traveling,
+                "destination": travel_destination,
+                "time_left": travel_time_left,
+            },
+            "status": {
+                "state": status_state,
+                "until": status_until,
+            },
+            "chain": chain_data,
+            "timestamp": now,
+        }
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Connection error: {str(e)}")
@@ -838,13 +903,12 @@ async def claim_target(
     # Fetch user name from Torn API (or cache)
     user_name = None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://api.torn.com/user/",
-                params={"selections": "profile", "key": x_api_key},
-            )
-            data = response.json()
-            user_name = data.get("name", "Unknown")
+        response = await shared_http_client.get(
+            "https://api.torn.com/user/",
+            params={"selections": "profile", "key": x_api_key},
+        )
+        data = response.json()
+        user_name = data.get("name", "Unknown")
     except Exception:
         user_name = "Unknown"
 
@@ -927,24 +991,22 @@ async def get_leaderboards_endpoint(
 
     # On first request, ensure we have stats for this user
     # Check if we have any stats for this player
-    from api.leaderboards import stats_cache, update_user_stats_from_api_call
+    from api.leaderboards import update_user_stats_from_api_call, has_player_stats
 
-    if player_id not in stats_cache:
+    if not has_player_stats(player_id):
         print(
             f"First leaderboard request for player {player_id}, collecting stats synchronously..."
         )
         # Collect stats synchronously on first request
-        await update_user_stats_from_api_call(api_key, player_id)
+        await update_user_stats_from_api_call(api_key, player_id, http_client=shared_http_client)
         # Force refresh to include the new data
         force_refresh = True
 
     return await get_leaderboards(force_refresh=force_refresh)
 
 
-# TornStats cache (in-memory, keyed by faction ID)
-tornstats_cache: dict[int, dict] = {}
-tornstats_cache_time: dict[int, float] = {}
-TORNSTATS_CACHE_TTL = 300  # 5 minutes - stats don't change often
+# TornStats cache TTL (disk cache is configured above)
+TORNSTATS_CACHE_TTL = 300  # 5 minutes
 
 
 def estimate_battle_stats(
@@ -1034,90 +1096,80 @@ async def get_tornstats(
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API key required")
 
-    now = time.time()
+    # Check disk cache
+    cache_key = f"tornstats:{faction_id}"
+    cached_data = tornstats_disk.get(cache_key)
+    if cached_data is not None:
+        return {"stats": cached_data, "cached": True, "cache_age": 0}
 
-    # Check cache
-    if faction_id in tornstats_cache:
-        cache_age = now - tornstats_cache_time.get(faction_id, 0)
-        if cache_age < TORNSTATS_CACHE_TTL:
-            return {"stats": tornstats_cache[faction_id], "cached": True, "cache_age": cache_age}
-
-    # Fetch from TornStats spies endpoint (your faction's shared spy database)
-    # This endpoint returns all spies your faction has shared
+    # Fetch from TornStats spies endpoint using shared client
     url = f"https://www.tornstats.com/api/v2/{x_api_key}/spies"
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url)
+        response = await shared_http_client.get(url, timeout=15.0)
 
-            print(f"TornStats spies response status: {response.status_code}")
+        print(f"TornStats spies response status: {response.status_code}")
 
-            raw_data = response.json()
-            print(
-                f"TornStats spies response keys: {raw_data.keys() if isinstance(raw_data, dict) else 'not a dict'}"
+        raw_data = response.json()
+        print(
+            f"TornStats spies response keys: {raw_data.keys() if isinstance(raw_data, dict) else 'not a dict'}"
+        )
+
+        if response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Invalid API key for TornStats")
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"TornStats API error: {response.status_code}",
             )
 
-            if response.status_code == 401:
-                raise HTTPException(status_code=401, detail="Invalid API key for TornStats")
+        # Check for TornStats errors
+        if raw_data.get("status") == False:
+            error_msg = raw_data.get("message", "Unknown TornStats error")
+            raise HTTPException(status_code=400, detail=error_msg)
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"TornStats API error: {response.status_code}",
-                )
+        # TornStats spies endpoint returns: {"status": true, "spies": [...]}
+        spies_list = raw_data.get("spies", [])
 
-            # Check for TornStats errors
-            if raw_data.get("status") == False:
-                error_msg = raw_data.get("message", "Unknown TornStats error")
-                raise HTTPException(status_code=400, detail=error_msg)
+        print(f"TornStats found {len(spies_list)} spies in database")
 
-            # TornStats spies endpoint returns: {"status": true, "spies": [...]}
-            spies_list = raw_data.get("spies", [])
-
-            print(f"TornStats found {len(spies_list)} spies in database")
-
-            # Debug: Print first spy to see structure
-            if spies_list:
-                print(f"Sample spy data: {spies_list[0]}")
-
-            # Transform to dict keyed by player_id
-            stats_by_id = {}
-            for spy in spies_list:
-                try:
-                    # TornStats format: player_id is a string
-                    player_id = spy.get("player_id") or spy.get("playerId")
-                    if not player_id:
-                        continue
-
-                    user_id = int(player_id)
-
-                    stats_by_id[user_id] = {
-                        "total": spy.get("total", 0) or 0,
-                        "strength": spy.get("strength", 0) or 0,
-                        "speed": spy.get("speed", 0) or 0,
-                        "dexterity": spy.get("dexterity", 0) or 0,
-                        "defense": spy.get("defense", 0) or 0,
-                        "timestamp": spy.get("timestamp", 0) or 0,
-                        "name": spy.get("player_name") or spy.get("playerName") or "",
-                    }
-                except (ValueError, TypeError) as e:
-                    print(f"Error parsing spy: {e}")
+        # Transform to dict keyed by player_id
+        stats_by_id = {}
+        for spy in spies_list:
+            try:
+                player_id = spy.get("player_id") or spy.get("playerId")
+                if not player_id:
                     continue
 
-            # Count how many have non-zero stats
-            non_zero = sum(1 for s in stats_by_id.values() if s.get("total", 0) > 0)
-            print(f"Spies with stats: {non_zero}/{len(stats_by_id)}")
+                user_id = int(player_id)
 
-            # Cache the result
-            tornstats_cache[faction_id] = stats_by_id
-            tornstats_cache_time[faction_id] = now
+                stats_by_id[user_id] = {
+                    "total": spy.get("total", 0) or 0,
+                    "strength": spy.get("strength", 0) or 0,
+                    "speed": spy.get("speed", 0) or 0,
+                    "dexterity": spy.get("dexterity", 0) or 0,
+                    "defense": spy.get("defense", 0) or 0,
+                    "timestamp": spy.get("timestamp", 0) or 0,
+                    "name": spy.get("player_name") or spy.get("playerName") or "",
+                }
+            except (ValueError, TypeError) as e:
+                print(f"Error parsing spy: {e}")
+                continue
 
-            return {
-                "stats": stats_by_id,
-                "cached": False,
-                "cache_age": 0,
-                "total_spies": len(stats_by_id),
-            }
+        # Count how many have non-zero stats
+        non_zero = sum(1 for s in stats_by_id.values() if s.get("total", 0) > 0)
+        print(f"Spies with stats: {non_zero}/{len(stats_by_id)}")
+
+        # Cache to disk (5 min TTL)
+        tornstats_disk.set(cache_key, stats_by_id, ttl=TORNSTATS_CACHE_TTL)
+
+        return {
+            "stats": stats_by_id,
+            "cached": False,
+            "cache_age": 0,
+            "total_spies": len(stats_by_id),
+        }
 
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="TornStats request timed out")
