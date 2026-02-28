@@ -810,7 +810,7 @@ header h1 {
 /* Timer */
 .target-table th:nth-child(2),
 .target-table td:nth-child(2) {
-    max-width: 160px;
+    width: 160px;
 }
 
 /* Name */
@@ -835,7 +835,7 @@ header h1 {
 /* Status */
 .target-table th:nth-child(6),
 .target-table td:nth-child(6) {
-    width: 140px;
+    width: 170px;
 }
 
 /* Reason */
@@ -1059,10 +1059,8 @@ header h1 {
 .reason-cell {
     font-size: 0.75rem;
     color: var(--text-secondary);
-    max-width: 180px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
 }
 
 /* Claim Cell */
