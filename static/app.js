@@ -29,8 +29,6 @@ let state = {
         claim: 'all',
         online: 'all',
         travel: 'all',
-        levelMin: null,
-        levelMax: null,
         statsMin: 0,
         statsMax: 999999999999
     },
@@ -91,8 +89,6 @@ function cacheElements() {
     elements.apiKey = document.getElementById('api-key');
     elements.toastContainer = document.getElementById('toast-container');
     elements.targetTable = document.getElementById('target-table');
-    elements.levelMin = document.getElementById('level-min');
-    elements.levelMax = document.getElementById('level-max');
     elements.statsMin = document.getElementById('stats-min');
     elements.statsMax = document.getElementById('stats-max');
     
@@ -198,9 +194,6 @@ function setupEventListeners() {
         elements.configPanel.classList.toggle('visible');
     });
     
-    // Refresh
-    document.getElementById('refresh-btn').addEventListener('click', () => fetchStatus(true));
-    
     // Filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -227,14 +220,6 @@ function setupEventListeners() {
     });
     
     // Range filter inputs
-    elements.levelMin.addEventListener('change', () => {
-        state.filters.levelMin = elements.levelMin.value ? parseInt(elements.levelMin.value) : null;
-        renderTargets();
-    });
-    elements.levelMax.addEventListener('change', () => {
-        state.filters.levelMax = elements.levelMax.value ? parseInt(elements.levelMax.value) : null;
-        renderTargets();
-    });
     elements.statsMin.addEventListener('change', () => {
         state.filters.statsMin = parseInt(elements.statsMin.value) || 0;
         renderTargets();
@@ -273,7 +258,7 @@ function setupEventListeners() {
 
 function applyStatFilter(filter) {
     // Reset all filters
-    state.filters = { hospital: 'all', claim: 'all', online: 'all', travel: 'all' };
+    state.filters = { hospital: 'all', claim: 'all', online: 'all', travel: 'all', statsMin: state.filters.statsMin, statsMax: state.filters.statsMax };
     
     // Apply specific filter
     switch (filter) {
@@ -1010,10 +995,6 @@ function filterTargets(targets) {
         // Travel filter
         if (state.filters.travel === 'local' && t.traveling) return false;
         if (state.filters.travel === 'traveling' && !t.traveling) return false;
-        
-        // Level range filter
-        if (state.filters.levelMin !== null && t.level < state.filters.levelMin) return false;
-        if (state.filters.levelMax !== null && t.level > state.filters.levelMax) return false;
         
         // Battle stats filter (best available: FFScouter > YATA)
         const totalStats = t.ff_estimated_stats || t.yata_estimated_stats || 0;

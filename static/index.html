@@ -17,6 +17,7 @@
           >
           <span id="last-update">Data age: --</span>
           <span id="api-calls">API: --/100</span>
+          <button id="toggle-config" class="btn btn-secondary btn-settings">⚙️ <span class="settings-text">Settings</span></button>
         </div>
       </header>
 
@@ -49,7 +50,7 @@
         <a
           href="https://www.torn.com/crimes.php"
           target="_blank"
-          class="user-status-item clickable-stat"
+          class="user-status-item clickable-stat nerve-item"
           title="Go to Crimes"
         >
           <span class="user-status-label">💢 N</span>
@@ -160,127 +161,62 @@
         </div>
       </div>
 
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat clickable" data-stat-filter="total">
+          <span class="stat-value" id="total-targets">0</span>
+          <span class="stat-label">Total</span>
+        </div>
+        <div class="stat clickable" data-stat-filter="hospital">
+          <span class="stat-value" id="in-hospital">0</span>
+          <span class="stat-label">In Hospital</span>
+        </div>
+        <div class="stat clickable" data-stat-filter="out">
+          <span class="stat-value" id="out-hospital">0</span>
+          <span class="stat-label">Out</span>
+        </div>
+        <div class="stat clickable" data-stat-filter="claimed">
+          <span class="stat-value" id="claimed-count">0</span>
+          <span class="stat-label">Claimed</span>
+        </div>
+        <div class="stat clickable" data-stat-filter="traveling">
+          <span class="stat-value" id="traveling-count">0</span>
+          <span class="stat-label">Traveling</span>
+        </div>
+        <div
+          class="stat clickable"
+          id="my-claims-stat"
+          data-stat-filter="myclaims"
+        >
+          <span class="stat-value" id="my-claims-count">0</span>
+          <span class="stat-label">My Claims</span>
+        </div>
+      </div>
+
       <div class="controls">
         <div class="filter-section">
           <div class="filter-group">
-            <span class="filter-label">Hospital:</span>
-            <button
-              class="filter-btn active"
-              data-filter-type="hospital"
-              data-value="all"
-            >
-              All
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="hospital"
-              data-value="in"
-            >
-              In
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="hospital"
-              data-value="out"
-            >
-              Out
-            </button>
+            <button class="filter-btn active" data-filter-type="hospital" data-value="all">All</button>
+            <button class="filter-btn" data-filter-type="hospital" data-value="in">In Hospital</button>
+            <button class="filter-btn" data-filter-type="hospital" data-value="out">Out</button>
           </div>
           <div class="filter-group">
-            <span class="filter-label">Claim:</span>
-            <button
-              class="filter-btn active"
-              data-filter-type="claim"
-              data-value="all"
-            >
-              All
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="claim"
-              data-value="unclaimed"
-            >
-              Unclaimed
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="claim"
-              data-value="claimed"
-            >
-              Claimed
-            </button>
+            <button class="filter-btn active" data-filter-type="claim" data-value="all">All</button>
+            <button class="filter-btn" data-filter-type="claim" data-value="unclaimed">Unclaimed</button>
+            <button class="filter-btn" data-filter-type="claim" data-value="claimed">Claimed</button>
           </div>
           <div class="filter-group">
-            <span class="filter-label">Status:</span>
-            <button
-              class="filter-btn active"
-              data-filter-type="online"
-              data-value="all"
-            >
-              All
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="online"
-              data-value="online"
-            >
-              Online
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="online"
-              data-value="offline"
-            >
-              Offline
-            </button>
+            <button class="filter-btn active" data-filter-type="online" data-value="all">All</button>
+            <button class="filter-btn" data-filter-type="online" data-value="online">Online</button>
+            <button class="filter-btn" data-filter-type="online" data-value="offline">Offline</button>
           </div>
           <div class="filter-group">
-            <span class="filter-label">Travel:</span>
-            <button
-              class="filter-btn active"
-              data-filter-type="travel"
-              data-value="all"
-            >
-              All
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="travel"
-              data-value="local"
-            >
-              Local
-            </button>
-            <button
-              class="filter-btn"
-              data-filter-type="travel"
-              data-value="traveling"
-            >
-              Traveling
-            </button>
+            <button class="filter-btn active" data-filter-type="travel" data-value="all">All</button>
+            <button class="filter-btn" data-filter-type="travel" data-value="local">Local</button>
+            <button class="filter-btn" data-filter-type="travel" data-value="traveling">Traveling</button>
           </div>
         </div>
 
         <div class="range-filters">
-          <div class="range-filter">
-            <span class="filter-label">Level:</span>
-            <input
-              type="number"
-              id="level-min"
-              class="range-input"
-              placeholder="Min"
-              min="1"
-              max="100"
-            />
-            <span class="range-separator">-</span>
-            <input
-              type="number"
-              id="level-max"
-              class="range-input"
-              placeholder="Max"
-              min="1"
-              max="100"
-            />
-          </div>
           <div class="range-filter">
             <span class="filter-label">Stats:</span>
             <select id="stats-min" class="range-select">
@@ -321,43 +257,6 @@
               <option value="10000000000">10B</option>
             </select>
           </div>
-          <div class="action-controls">
-            <button id="refresh-btn" class="btn btn-secondary">🔄 Refresh</button>
-            <button id="toggle-config" class="btn btn-secondary">
-              ⚙️ Settings
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="stats-bar" id="stats-bar">
-        <div class="stat clickable" data-stat-filter="total">
-          <span class="stat-value" id="total-targets">0</span>
-          <span class="stat-label">Total</span>
-        </div>
-        <div class="stat clickable" data-stat-filter="hospital">
-          <span class="stat-value" id="in-hospital">0</span>
-          <span class="stat-label">In Hospital</span>
-        </div>
-        <div class="stat clickable" data-stat-filter="out">
-          <span class="stat-value" id="out-hospital">0</span>
-          <span class="stat-label">Out</span>
-        </div>
-        <div class="stat clickable" data-stat-filter="claimed">
-          <span class="stat-value" id="claimed-count">0</span>
-          <span class="stat-label">Claimed</span>
-        </div>
-        <div class="stat clickable" data-stat-filter="traveling">
-          <span class="stat-value" id="traveling-count">0</span>
-          <span class="stat-label">Traveling</span>
-        </div>
-        <div
-          class="stat clickable"
-          id="my-claims-stat"
-          data-stat-filter="myclaims"
-        >
-          <span class="stat-value" id="my-claims-count">0</span>
-          <span class="stat-label">My Claims</span>
         </div>
       </div>
 

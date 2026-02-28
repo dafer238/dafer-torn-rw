@@ -61,6 +61,13 @@ header h1 {
     gap: 15px;
     font-size: 0.8rem;
     color: var(--text-secondary);
+    align-items: center;
+}
+
+.btn-settings {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    margin-left: auto;
 }
 
 .status-indicator {
@@ -485,6 +492,11 @@ header h1 {
     font-size: 0.75rem;
 }
 
+/* Settings Button Top */
+.action-controls-top {
+    display: none;
+}
+
 /* Controls */
 .controls {
     display: flex;
@@ -501,13 +513,14 @@ header h1 {
 .filter-section {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 6px;
+    width: 100%;
 }
 
 .filter-group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 
 .filter-label {
@@ -695,9 +708,10 @@ header h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 6px 16px;
+    padding: 6px 12px;
     border-right: 1px solid var(--border-color);
-    min-width: 70px;
+    min-width: 0;
+    flex: 1;
 }
 
 .stat:last-child {
@@ -1102,11 +1116,6 @@ header h1 {
 
 /* Responsive */
 @media (max-width: 900px) {
-    .filter-section {
-        flex-direction: column;
-        gap: 6px;
-    }
-    
     /* On tablets, keep stats bar more readable */
     .stats-bar {
         flex-wrap: wrap;
@@ -1156,6 +1165,19 @@ header h1 {
         gap: 10px;
         width: 100%;
         font-size: 0.8rem;
+    }
+
+    .settings-text {
+        display: none;
+    }
+
+    .btn-settings {
+        padding: 3px 6px;
+    }
+
+    /* Hide nerve bar on mobile */
+    .nerve-item {
+        display: none;
     }
 
     .user-status-bar {
@@ -1208,6 +1230,12 @@ header h1 {
         flex-basis: 100%;
         justify-content: center;
         padding: 4px;
+    }
+
+    .status-item {
+        flex-basis: 100%;
+        margin-left: 0;
+        text-align: left;
     }
 
     .toggle-btn-compact {
@@ -1269,12 +1297,7 @@ header h1 {
         flex: 1 1 calc(50% - 2px);
         min-width: calc(50% - 2px);
         gap: 2px;
-    }
-
-    .filter-label {
-        width: 100%;
-        font-size: 0.6rem;
-        margin-bottom: 0;
+        justify-content: center;
     }
 
     .filter-btn {
@@ -1298,29 +1321,10 @@ header h1 {
         gap: 4px;
     }
 
-    .range-input {
-        width: 60px;
-        font-size: 0.72rem;
-        padding: 4px;
-    }
-
     .range-select {
         flex: 1;
         font-size: 0.78rem;
         padding: 6px;
-    }
-
-    .action-controls {
-        width: 100%;
-        gap: 8px;
-    }
-
-    .action-controls .btn {
-        flex: 1;
-        padding: 8px 12px;
-        font-size: 0.85rem;
-        min-height: 36px;
-        touch-action: manipulation;
     }
 
     .target-table-container {
@@ -1493,7 +1497,7 @@ header h1 {
 
     .stat {
         padding: 5px 8px;
-        min-width: calc(50% - 2px);
+        min-width: calc(33.33% - 3px);
     }
 
     .stat-value {
@@ -1545,8 +1549,17 @@ header h1 {
     }
 
     .chain-item {
+        flex-basis: 100%;
         padding: 4px 8px;
         gap: 2px;
+    }
+
+    .view-toggle-compact {
+        flex-basis: 100%;
+    }
+
+    .status-item {
+        flex-basis: 100%;
     }
 
     .chain-label {
@@ -1578,20 +1591,9 @@ header h1 {
         border-radius: 2px;
     }
 
-    .range-input {
-        width: 55px;
-        font-size: 0.72rem;
-        padding: 5px;
-    }
-
     .range-select {
         font-size: 0.72rem;
         padding: 5px;
-    }
-
-    .action-controls .btn {
-        padding: 6px 10px;
-        font-size: 0.78rem;
     }
 
     .target-table {
