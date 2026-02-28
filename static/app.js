@@ -1313,9 +1313,10 @@ function renderTargetRow(target) {
         // HTML with timer span for live updates (airstrip time)
         reasonHtml = `${escapeHtml(displayText)} (<span class="travel-timer">${timerTextAirstrip}</span>)`;
 
-        // Tooltip shows both airstrip and business class times with landing times
-        const arrivalAirstrip = new Date(travelInfo.airstrip.landing * 1000).toLocaleTimeString();
-        const arrivalBC = new Date(travelInfo.businessClass.landing * 1000).toLocaleTimeString();
+        // Tooltip shows both airstrip and business class times with landing times (24h format)
+        const timeOpts = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+        const arrivalAirstrip = new Date(travelInfo.airstrip.landing * 1000).toLocaleTimeString([], timeOpts);
+        const arrivalBC = new Date(travelInfo.businessClass.landing * 1000).toLocaleTimeString([], timeOpts);
         
         if (travelInfo.isActualTime) {
             // Fallback: using actual API time, not estimate
@@ -1353,7 +1354,7 @@ function renderTargetRow(target) {
         const remaining = target.hospital_until - Math.floor(Date.now() / 1000);
         if (remaining > 0) {
             reasonHtml = `In hospital (<span class="timer">${formatTime(remaining)}</span>)`;
-            reasonTooltip = `In hospital (${formatTime(remaining)})\nReleased at: ${new Date(target.hospital_until * 1000).toLocaleTimeString()}`;
+            reasonTooltip = `In hospital (${formatTime(remaining)})\nReleased at: ${new Date(target.hospital_until * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`;
         } else {
             reasonHtml = 'Out of hospital';
             reasonTooltip = 'Out of hospital';
