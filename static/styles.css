@@ -1,3 +1,25 @@
+/* Tooltip styles for Reason/Stats columns */
+.custom-tooltip {
+    position: absolute;
+    z-index: 9999;
+    background: #222;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    max-width: 220px;
+    pointer-events: none;
+    white-space: pre-line;
+    opacity: 0.97;
+    transition: opacity 0.15s;
+}
+.tooltip-trigger {
+    cursor: pointer;
+}
+.no-underline {
+    text-decoration: none !important;
+}
 /* Torn Ranked War Tracker - Styles */
 
 :root {

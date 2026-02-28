@@ -59,6 +59,7 @@ const elements = {};
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
+    setupEventListeners(); // Ensure event listeners are attached immediately
     // Fetch server config to get poll interval
     try {
         const resp = await fetch('/api/config');
@@ -68,9 +69,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) { /* use defaults */ }
     loadConfig();
-    setupEventListeners();
     startTimers();
     // startPolling() will be called after user info is loaded
+    // Always show config panel if API key is missing
+    if (!localStorage.getItem('tornApiKey')) {
+        elements.configPanel.classList.add('visible');
+    }
 });
 
 function cacheElements() {
@@ -142,6 +146,7 @@ function loadConfig() {
     } else {
         // Fetch user info from backend, then start polling
         fetchUserInfoFromApiKey(state.apiKey, false, () => {
+            state.isUserInfoLoaded = true;
             startPolling();
         });
     }
@@ -180,6 +185,7 @@ function saveConfig() {
         
         // Fetch user info from backend, then start polling
         fetchUserInfoFromApiKey(state.apiKey, true, () => {
+            state.isUserInfoLoaded = true;
             startPolling();
         });
     } else {
@@ -471,6 +477,25 @@ function getHitsToNextBonus(current) {
     return next ? next - current : null;
 }
 
+let ownStatusCountdown = { type: null, until: 0, destination: null, snapshot: 0, duration: 0 };
+function updateOwnStatusCountdown() {
+    if (!elements.playerState) return;
+    if (!ownStatusCountdown.type) return;
+    const now = Math.floor(Date.now() / 1000);
+    const elapsed = now - ownStatusCountdown.snapshot;
+    const remaining = Math.max(0, ownStatusCountdown.duration - elapsed);
+    let text = '';
+    if (ownStatusCountdown.type === 'hospital') {
+        text = `🏥 ${formatTime(remaining)}`;
+    } else if (ownStatusCountdown.type === 'travel') {
+        text = `✈️ ${ownStatusCountdown.destination} (${formatTime(remaining)})`;
+    }
+    if (remaining > 0) {
+        elements.playerState.textContent = text;
+    }
+}
+setInterval(updateOwnStatusCountdown, 1000);
+
 async function fetchUserStatus() {
     if (!state.apiKey) return;
     
@@ -523,19 +548,30 @@ async function fetchUserStatus() {
             const statusState = data.status.state;
             let stateClass = 'okay';
             let stateText = statusState;
-            
+            ownStatusCountdown.type = null;
             if (statusState === 'Hospital') {
                 stateClass = 'hospital';
-                const remaining = data.status.until - Math.floor(Date.now() / 1000);
-                if (remaining > 0) {
-                    stateText = `🏥 ${formatCooldown(remaining)}`;
+                const until = data.status.until;
+                const now = Math.floor(Date.now() / 1000);
+                const duration = until - now;
+                if (duration > 0) {
+                    stateText = `🏥 ${formatTime(duration)}`;
+                    ownStatusCountdown.type = 'hospital';
+                    ownStatusCountdown.snapshot = now;
+                    ownStatusCountdown.duration = duration;
                 }
             } else if (statusState === 'Jail') {
                 stateClass = 'jail';
                 stateText = '⛓️ Jail';
             } else if (data.travel.traveling) {
                 stateClass = 'traveling';
-                stateText = `✈️ ${data.travel.destination} (${formatCooldown(data.travel.time_left)})`;
+                const now = Math.floor(Date.now() / 1000);
+                const duration = data.travel.time_left || 0;
+                stateText = `✈️ ${data.travel.destination} (${formatTime(duration)})`;
+                ownStatusCountdown.type = 'travel';
+                ownStatusCountdown.snapshot = now;
+                ownStatusCountdown.duration = duration;
+                ownStatusCountdown.destination = data.travel.destination;
             } else if (statusState === 'Okay') {
                 stateText = '✅ Ready';
             }
@@ -726,47 +762,52 @@ function formatCooldown(seconds) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatTime(seconds) {
+    if (seconds <= 0) return 'OUT';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 async function fetchStatus(forceRefresh = false) {
     // Don't fetch if no API key configured
     if (!state.apiKey) {
         updateConnectionStatus(false, 'No API key');
         return;
     }
-    
     // Prevent concurrent fetches - skip if already fetching
     if (state.isFetching) {
         return;
     }
-    
     state.isFetching = true;
     const thisRequestId = ++state.fetchRequestId;
-    
     try {
         const url = forceRefresh 
             ? `${CONFIG.API_BASE}/status?force_refresh=true`
             : `${CONFIG.API_BASE}/status`;
-        
         const response = await fetch(url, {
             headers: {
                 'X-API-Key': state.apiKey
             }
         });
-        
         // Check if this request is still the latest one
         if (thisRequestId !== state.fetchRequestId) {
             return; // A newer request was started, discard this result
         }
-        
         if (response.status === 401) {
             showToast('Invalid API key', 'error');
             elements.configPanel.classList.add('visible');
             return;
         }
-        
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Failed to load targets:', response.status, errorText);
+            elements.targetList.innerHTML = `<tr><td colspan="8" class="loading">Error loading targets: ${response.status}</td></tr>`;
+            updateConnectionStatus(false, `Error ${response.status}`);
+            return;
+        }
         const data = await response.json();
-        
         // Double-check this is still the latest request
         if (thisRequestId !== state.fetchRequestId) {
             return;
@@ -792,8 +833,9 @@ async function fetchStatus(forceRefresh = false) {
         
     } catch (error) {
         console.error('Fetch error:', error);
+        elements.targetList.innerHTML = `<tr><td colspan="8" class="loading">Error loading targets: ${error}</td></tr>`;
         state.isConnected = false;
-        updateConnectionStatus(false);
+        updateConnectionStatus(false, 'Fetch error');
     } finally {
         state.isFetching = false;
     }
@@ -955,149 +997,6 @@ function sendNotification(title, body, url = null) {
     setTimeout(() => notification.close(), 10000);
 }
 
-function formatTime(seconds) {
-    if (seconds <= 0) return 'OUT';
-    
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    
-    if (h > 0) {
-        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    }
-    return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function formatStats(total) {
-    if (!total || total <= 0) return '-';
-    if (total >= 1e12) return (total / 1e12).toFixed(1) + 'T';
-    if (total >= 1e9) return (total / 1e9).toFixed(1) + 'B';
-    if (total >= 1e6) return (total / 1e6).toFixed(1) + 'M';
-    if (total >= 1e3) return (total / 1e3).toFixed(1) + 'K';
-    return total.toString();
-}
-
-function filterTargets(targets) {
-    return targets.filter(t => {
-        // Hospital filter
-        if (state.filters.hospital === 'in' && t.hospital_status === 'out') return false;
-        if (state.filters.hospital === 'out' && t.hospital_status !== 'out') return false;
-        
-        // Claim filter
-        if (state.filters.claim === 'unclaimed' && t.claimed_by) return false;
-        if (state.filters.claim === 'claimed' && !t.claimed_by) return false;
-        if (state.filters.claim === 'myclaims' && t.claimed_by_id !== parseInt(state.userId)) return false;
-        
-        // Online filter
-        if (state.filters.online === 'online' && t.estimated_online !== 'online') return false;
-        if (state.filters.online === 'offline' && t.estimated_online === 'online') return false;
-        
-        // Travel filter
-        if (state.filters.travel === 'local' && t.traveling) return false;
-        if (state.filters.travel === 'traveling' && !t.traveling) return false;
-        
-        // Battle stats filter (best available: FFScouter > YATA)
-        const totalStats = t.ff_estimated_stats || t.yata_estimated_stats || 0;
-        if (totalStats < state.filters.statsMin) return false;
-        if (totalStats > state.filters.statsMax) return false;
-        
-        return true;
-    });
-}
-
-function sortTargets(targets) {
-    const sorted = [...targets];
-    const dir = state.sortDir === 'asc' ? 1 : -1;
-    
-    sorted.sort((a, b) => {
-        let cmp = 0;
-        
-        switch (state.sortBy) {
-            case 'timer':
-                // Out first (0), then by remaining time
-                const aOut = a.hospital_status === 'out' ? 0 : 1;
-                const bOut = b.hospital_status === 'out' ? 0 : 1;
-                if (aOut !== bOut) {
-                    cmp = aOut - bOut;
-                } else {
-                    cmp = (a.hospital_remaining || 0) - (b.hospital_remaining || 0);
-                }
-                break;
-            case 'name':
-                cmp = a.name.localeCompare(b.name);
-                break;
-            case 'level':
-                cmp = a.level - b.level;
-                break;
-            case 'stats':
-                const aStats = a.ff_estimated_stats || a.yata_estimated_stats || 0;
-                const bStats = b.ff_estimated_stats || b.yata_estimated_stats || 0;
-                cmp = aStats - bStats;
-                break;
-            case 'online':
-                const onlineOrder = { online: 0, idle: 1, offline: 2, unknown: 3 };
-                cmp = (onlineOrder[a.estimated_online] || 3) - (onlineOrder[b.estimated_online] || 3);
-                break;
-            case 'claimed':
-                // Sort by: my claims first, then other claims, then unclaimed
-                const aClaimOrder = a.claimed_by_id === parseInt(state.userId) ? 0 : (a.claimed_by ? 1 : 2);
-                const bClaimOrder = b.claimed_by_id === parseInt(state.userId) ? 0 : (b.claimed_by ? 1 : 2);
-                if (aClaimOrder !== bClaimOrder) {
-                    cmp = aClaimOrder - bClaimOrder;
-                } else {
-                    // Within same claim status, sort by claimer name
-                    cmp = (a.claimed_by || '').localeCompare(b.claimed_by || '');
-                }
-                break;
-        }
-        
-        return cmp * dir;
-    });
-    
-    return sorted;
-}
-
-function renderTargets() {
-    let targets = filterTargets(state.targets);
-    targets = sortTargets(targets);
-    
-    if (targets.length === 0) {
-        elements.targetList.innerHTML = `
-            <tr><td colspan="8" class="loading">
-                ${state.targets.length === 0 
-                    ? 'No targets loaded. Check API configuration.' 
-                    : 'No targets match the current filters.'}
-            </td></tr>
-        `;
-        return;
-    }
-    
-    const html = targets.map(target => renderTargetRow(target)).join('');
-    elements.targetList.innerHTML = html;
-    
-    // Immediately update timers after rendering so they show current values
-    updateTimers();
-    
-    // Attach event listeners
-    document.querySelectorAll('.claim-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleClaim(btn.dataset.targetId));
-    });
-    
-    document.querySelectorAll('.unclaim-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleUnclaim(btn.dataset.targetId));
-    });
-    
-    document.querySelectorAll('.copy-target-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleCopyTarget(
-            btn.dataset.targetId, 
-            btn.dataset.targetName, 
-            btn.dataset.onlineStatus,
-            btn.dataset.stats,
-            btn.dataset.ffScore
-        ));
-    });
-}
-
 function getFairFightColor(ff) {
     if (ff === null || ff === undefined) return { color: '#4fc3f7', bg: 'rgba(79,195,247,0.15)' };
     const stops = [
@@ -1238,6 +1137,100 @@ function renderTargetRow(target) {
         claimButton = `<button class="btn btn-claim claim-btn" data-target-id="${target.user_id}">Claim</button>`;
     }
     
+    // Travel times (seconds) for airstrip + business class ticket
+
+    // Torn Wiki travel times (airstrip + business class ticket, in seconds)
+    const travelTimes = {
+        "Argentina": 900,
+        "Mexico": 900,
+        "Hawaii": 900,
+        "UAE": 900,
+        "Japan": 900,
+        "China": 900,
+        "South Africa": 900,
+        "Switzerland": 900,
+        "United Kingdom": 900,
+        "Canada": 900,
+        "United States": 900,
+        "Cayman Islands": 900,
+        "Russia": 900,
+        "France": 900,
+        "Italy": 900,
+        "Spain": 900,
+        "Netherlands": 900,
+        "Australia": 900,
+        "Brazil": 900,
+        "Torn": 0 // Default/fallback (already in Torn)
+    };
+
+    // Helper: get time left and landing time
+    function getTravelInfo(target) {
+        if (!target.traveling || !target.travel_destination || !target.travel_started) return null;
+        const now = Math.floor(Date.now() / 1000);
+        const duration = travelTimes[target.travel_destination] || 1800;
+        const landing = target.travel_started + duration;
+        const timeLeft = Math.max(0, landing - now);
+        return { destination: target.travel_destination, timeLeft, landing };
+    }
+
+    // Reason column logic
+    let reasonHtml = '';
+    let reasonTooltip = '';
+    const travelInfo = getTravelInfo(target);
+    if (travelInfo) {
+        // Determine if returning (destination is Torn)
+        if (travelInfo.destination === 'Torn') {
+            // Show 'Returning from [origin]' if origin is known
+            const origin = target.travel_origin || 'Unknown';
+            reasonHtml = `Returning from ${escapeHtml(origin)} (<span class="travel-timer">${formatTime(travelInfo.timeLeft)}</span>)`;
+            reasonTooltip = `Estimated arrival: ${new Date(travelInfo.landing * 1000).toLocaleTimeString()}\nBusiness class ticket used (airstrip time)`;
+        } else {
+            reasonHtml = `Traveling to ${escapeHtml(travelInfo.destination)} (<span class="travel-timer">${formatTime(travelInfo.timeLeft)}</span>)`;
+            reasonTooltip = `Estimated landing: ${new Date(travelInfo.landing * 1000).toLocaleTimeString()}\nBusiness class ticket used (airstrip time)`;
+        }
+    } else if (target.traveling && target.travel_destination) {
+        if (target.travel_destination === 'Torn') {
+            const origin = target.travel_origin || 'Unknown';
+            reasonHtml = `Returning from ${escapeHtml(origin)}`;
+            reasonTooltip = `Returning (exact time unknown)`;
+        } else {
+            reasonHtml = `Traveling to ${escapeHtml(target.travel_destination)}`;
+            reasonTooltip = `Traveling (exact time unknown)`;
+        }
+    } else if (target.hospital_reason) {
+        reasonHtml = escapeHtml(target.hospital_reason);
+        reasonTooltip = escapeHtml(target.hospital_reason);
+    } else {
+        reasonHtml = '-';
+        reasonTooltip = '';
+    }
+
+    // Stats column tooltip logic
+    let statsCellTooltip = '';
+    if (hasFF) {
+        statsCellTooltip = `FFScouter Estimate\nFF Score: ${target.ff_fair_fight?.toFixed(2) || ''}\nEstimate Date: ${target.ff_timestamp ? new Date(target.ff_timestamp * 1000).toLocaleString() : 'Unknown'}`;
+        if (hasYata) statsCellTooltip += `\nYATA Estimate: ${target.yata_estimated_stats_formatted || '?'}`;
+    } else if (hasYata) {
+        statsCellTooltip = `YATA ML Estimate\nType: ${target.yata_build_type || 'Unknown'}\nSkewness: ${target.yata_skewness || 0}\nScore: ${target.yata_score || 0}\nEstimate Date: ${target.yata_timestamp ? new Date(target.yata_timestamp * 1000).toLocaleString() : 'Unknown'}`;
+    }
+
+    // Tooltip HTML helper (no underline)
+    function tooltipSpan(html, tooltip, cls) {
+        return `<span class="${cls || ''} tooltip-trigger no-underline" tabindex="0" data-tooltip="${escapeHtml(tooltip)}">${html}</span>`;
+    }
+
+    // Stats cell with tooltip (click/tap always works)
+    let statsCellHtml = statsHtml;
+    if (statsCellTooltip) {
+        statsCellHtml = tooltipSpan(statsHtml, statsCellTooltip, 'stats-cell-inner');
+    }
+
+    // Reason cell with tooltip
+    let reasonCellHtml = reasonHtml;
+    if (reasonTooltip) {
+        reasonCellHtml = tooltipSpan(reasonHtml, reasonTooltip, 'reason-cell-inner');
+    }
+
     return `
         <tr class="${rowClass}" 
             data-target-id="${target.user_id}" 
@@ -1262,22 +1255,75 @@ function renderTargetRow(target) {
                 </div>
             </td>
             <td>${target.level}</td>
-            <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsHtml}</td>
+            <td class="stats-cell ${hasStats ? 'has-stats' : ''}">${statsCellHtml}</td>
             <td class="online-cell">
                 <div class="online-content">
                     <span class="online-dot ${onlineClass}"></span>
                     <span class="online-text">${onlineText}</span>
                 </div>
             </td>
-            <td class="reason-cell" title="${escapeHtml(target.hospital_reason || '')}">
-                ${escapeHtml(target.hospital_reason || '-')}
-            </td>
+            <td class="reason-cell">${reasonCellHtml}</td>
             <td class="claim-cell">
                 ${isClaimed ? escapeHtml(target.claimed_by) : '-'}
             </td>
             <td>${claimButton}</td>
         </tr>
     `;
+    // Tooltip logic for mobile/desktop
+    document.addEventListener('DOMContentLoaded', () => {
+        function showTooltip(el) {
+            let tooltip = document.createElement('div');
+            tooltip.className = 'custom-tooltip';
+            tooltip.textContent = el.dataset.tooltip;
+            document.body.appendChild(tooltip);
+            const rect = el.getBoundingClientRect();
+            tooltip.style.left = `${rect.left + window.scrollX}px`;
+            tooltip.style.top = `${rect.bottom + window.scrollY + 4}px`;
+            el._tooltip = tooltip;
+        }
+        function hideTooltip(el) {
+            if (el._tooltip) {
+                el._tooltip.remove();
+                el._tooltip = null;
+            }
+        }
+        document.body.addEventListener('mouseover', e => {
+            const el = e.target.closest('.tooltip-trigger');
+            if (el && window.innerWidth > 800) showTooltip(el);
+        });
+        document.body.addEventListener('mouseout', e => {
+            const el = e.target.closest('.tooltip-trigger');
+            if (el) hideTooltip(el);
+        });
+        document.body.addEventListener('click', e => {
+            const el = e.target.closest('.tooltip-trigger');
+            if (el) {
+                if (el._tooltip) hideTooltip(el);
+                else showTooltip(el);
+            }
+        });
+        // On mobile, show tooltip on tap
+        document.body.addEventListener('touchstart', e => {
+            const el = e.target.closest('.tooltip-trigger');
+            if (el) {
+                if (el._tooltip) hideTooltip(el);
+                else showTooltip(el);
+            }
+        });
+    });
+}
+
+function renderTargets() {
+    let targets = state.targets || [];
+    if (targets.length === 0) {
+        elements.targetList.innerHTML = `<tr><td colspan="8" class="loading">${state.targets.length === 0 
+            ? 'No targets loaded. Check API configuration.' 
+            : 'No targets match the current filters.'}</td></tr>`;
+        return;
+    }
+    const html = targets.map(target => renderTargetRow(target)).join('');
+    elements.targetList.innerHTML = html;
+    updateTimers();
 }
 
 // Fetch user info from backend using API key
@@ -1340,93 +1386,42 @@ async function handleClaim(targetId) {
         
         const data = await response.json();
         
-        if (data.success) {
-            showToast(data.message, 'success');
+        if (response.ok) {
+            // Claim successful
+            showToast(`Claimed ${data.target.name} (${data.target.user_id})`, 'success');
+            // Update local state immediately
+            const target = state.targets.find(t => t.user_id === tid);
+            if (target) {
+                target.claimed_by_id = state.userId;
+                target.claimed_by = state.userName;
+            }
+            // Refresh targets display
+            renderTargets();
         } else {
-            showToast(data.message || 'Failed to claim target', 'error');
+            // Handle specific error messages from server
+            let errorMessage = 'Failed to claim target';
+            if (data.error) {
+                errorMessage = data.error;
+            } else if (response.status === 403) {
+                errorMessage = 'You are not allowed to claim this target';
+            } else if (response.status === 404) {
+                errorMessage = 'Target not found';
+            }
+            showToast(errorMessage, 'error');
         }
     } catch (error) {
         console.error('Claim error:', error);
-        showToast('Network error claiming target', 'error');
+        showToast('Error processing claim', 'error');
     }
-    
-    // Refresh to get latest server data
-    fetchStatus(true);
 }
 
-async function handleUnclaim(targetId) {
-    if (!state.userId) return;
-    
-    const tid = parseInt(targetId);
-    
-    try {
-        const response = await fetch(
-            `${CONFIG.API_BASE}/claim/${targetId}?claimer_id=${state.userId}`,
-            { 
-                method: 'DELETE',
-                headers: { 'X-API-Key': state.apiKey }
-            }
-        );
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showToast('Claim released', 'success');
-        } else {
-            showToast(data.detail || 'Failed to release claim', 'error');
-        }
-    } catch (error) {
-        console.error('Unclaim error:', error);
-        showToast('Network error releasing claim', 'error');
-    }
-    
-    // Refresh to get latest server data
-    fetchStatus(true);
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
-function handleCopyTarget(targetId, targetName, onlineStatus, stats, ffScore) {
-    const profileUrl = `https://www.torn.com/profiles.php?XID=${targetId}`;
-    const attackUrl = `https://www.torn.com/loader2.php?sid=getInAttack&user2ID=${targetId}`;
-    
-    // Determine circle color based on online status
-    let circle = '⚫'; // Black circle (offline/unknown)
-    if (onlineStatus === 'online') {
-        circle = '🟢'; // Green circle
-    } else if (onlineStatus === 'idle') {
-        circle = '🟡'; // Yellow circle
-    }
-    
-    // Build stats label with FF score if available
-    let statsLabel = stats;
-    if (ffScore) statsLabel += ` | FF ${ffScore}`;
-    
-    // Format: ⚫ <a href="profile_url">Name (stats)</a> - <a href="attack_url">Attack</a>
-    const html = `${circle} <a href="${profileUrl}">${targetName} (${statsLabel})</a> - <a href="${attackUrl}">Attack</a>`;
-    
-    navigator.clipboard.writeText(html).then(() => {
-        showToast('Target info copied!', 'success');
-    }).catch(err => {
-        console.error('Copy failed:', err);
-        showToast('Failed to copy', 'error');
-    });
-}
-
-function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    
-    elements.toastContainer.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.animation = 'slideIn 0.2s ease reverse';
-        setTimeout(() => toast.remove(), 200);
-    }, CONFIG.TOAST_DURATION);
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+//# sourceMappingURL=app.js.map
