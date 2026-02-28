@@ -1131,22 +1131,21 @@ header h1 {
 @media (max-width: 600px) {
     body {
         font-size: 14px;
-        }
+    
 
         .container {
-    }
-                padding: 6px;
+        padding: 6px;
     
 /* Header improvements */
     header {
         flex-wrap: wrap;
         gap: 8px;
-            padding: 10px 0;
+        padding: 10px 0;
         }
         
         header h1 {
         font-size: 1.3rem;
-            width: 100%;
+        width: 100%;
         }
         
         .header-stats {
@@ -1154,143 +1153,129 @@ header h1 {
             gap: 10px;
             width: 100%;
         font-size: 0.8rem;
-        }
-        
-        /* User status bar - make it fully responsive */
+    
+        /* User status bar */
         .user-status-bar {
         gap: 6px;
-            padding: 6px;
+        padding: 6px;
             flex-wrap: wrap;
         }
         
         .user-status-item {
         flex-basis: calc(50% - 3px);
-            gap: 4px;
+        gap: 4px;
             padding: 5px;
         }
         
         .user-status-label {
         font-size: 0.72rem;
-            min-width: 28px;
+        min-width: 28px;
         }
         
         .bar-container {
             width: 100%;
         min-width: 70px;
-            height: 16px;
+        height: 16px;
         }
         
         .bar-text {
         font-size: 0.72rem;
-        }
-        
-        .cooldown-item {
+    .cooldown-item {
         flex-basis: calc(33.33% - 4px);
-            min-width: 65px;
+        min-width: 65px;
             padding: 5px;
         }
         
         .cooldown-label {
         font-size: 0.68rem;
-        }
-        
-        .cooldown-value {
+    .cooldown-value {
         font-size: 0.8rem;
-        }
-        
-        .chain-item {
-            flex-basis: 100%;
+    .chain-item {
+        flex-basis: 100%;
         padding: 5px 10px;
-        }
-        
-        /* View toggle on mobile */
-        .view-toggle-compact {
-            flex-basis: 100%;
-            justify-content: center;
-            padding: 4px;
-        }
-        
-        .toggle-btn-compact {
-            flex: 1;
-            padding: 6px 12px;
-            font-size: 0.75rem;
+    /* View toggle on mobile */
+    .view-toggle-compact {
+        flex-basis: 100%;
+        justify-content: center;
+        padding: 4px;
+    }
+    
+    .toggle-btn-compact {
+        flex: 1;
+        padding: 6px 12px;
+        font-size: 0.75rem;
     }
 
-    /* Make stats bar wrap on mobile */
+        /* Stats bar */
     .stats-bar {
         flex-wrap: wrap;
         gap: 4px;
-            padding: 4px;
+        padding: 4px;
     }
 
     .stat {
-    padding: 6px 10px;
-    min-width: calc(33.33% - 3px);
-    flex: 1;
+        padding: 6px 10px;
+            min-width: calc(33.33% - 3px);
+            flex: 1;
         border-right: none;
         border: 1px solid var(--border-color);
-                border-radius: 4px;
+        border-radius: 4px;
     
 .stat-value {
         font-size: 1.1rem;
-        }
-        
-        .stat-label {
+    .stat-label {
         font-size: 0.65rem;
-        }
-        
-        /* Config panel mobile improvements */
+    
+        /* Config panel */
         .config-panel {
             padding: 10px;
         }
-        
+    
         .config-form {
             flex-direction: column;
             gap: 10px;
         }
-        
+    
         .form-group {
             width: 100%;
         }
-        
+    
         .form-group input {
             width: 100%;
             font-size: 14px;
             padding: 8px;
         }
-        
-                                                                /* Filter section mobile improvements - 2 filter groups per row */
+        /* Filter section - 2 filter groups per row */
         .filter-section {
             flex-direction: row;
-                flex-wrap: wrap;
-                gap: 6px;
+            flex-wrap: wrap;
+            gap: 6px;
         }
-        
+    
         .filter-group {
             flex-wrap: wrap;
             flex: 1 1 calc(50% - 3px);
-                min-width: calc(50% - 3px);
-                gap: 3px;
+            min-width: calc(50% - 3px);
+            gap: 3px;
         }
-        
+    
         .filter-label {
             width: 100%;
             font-size: 0.68rem;
-                margin-bottom: 1px;
+            margin-bottom: 1px;
         }
-        
+    
         .filter-btn {
             padding: 4px 6px;
-                font-size: 0.7rem;
+            font-size: 0.7rem;
             flex: 1;
             min-width: 0;
-                text-align: center;
+            text-align: center;
         }
-        
-        /* Range filters mobile */
+        /* Range filters */
         .range-filters {
         gap: 8px;
-            padding-top: 8px;
+        padding-top: 8px;
             margin-top: 6px;
         }
         
@@ -1302,13 +1287,13 @@ header h1 {
         
         .range-input {
         width: 65px;
-            font-size: 0.78rem;
+        font-size: 0.78rem;
             padding: 6px;
         }
         
         .range-select {
         flex: 1;
-            font-size: 0.78rem;
+        font-size: 0.78rem;
             padding: 6px;
         }
         
@@ -1322,144 +1307,130 @@ header h1 {
             padding: 8px 12px;
             font-size: 0.85rem;
             min-height: 36px;
-                touch-action: manipulation;
+            touch-action: manipulation;
         }
-    
-                                                                /* Table improvements */
+        
+        /* Table improvements */
         .target-table-container {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         margin: 0 -6px;
-            padding: 0 6px;
+        padding: 0 6px;
         }
         
         .target-table {
             font-size: 0.72rem;
-                min-width: 580px;
+            min-width: 580px;
         }
 
     .target-table th,
     .target-table td {
         padding: 6px 5px;
-            font-size: 0.72rem;
+        font-size: 0.72rem;
         }
-        
-        /* Adjusted column widths for mobile */
+        /* Column widths for mobile */
         .target-table th:nth-child(1),
         .target-table td:nth-child(1) {
             width: 55px;
         }
-                                /* Timer */
-                                .target-table th:nth-child(3),
-                                .target-table td:nth-child(3) {
-                                    width: 30px;
-                                }
-                
-                                /* Level */
-        .target-table th:nth-child(4),
-                                .target-table td:nth-child(4) {
-                    width: 85px;
-                    }
-                    
-                    /* Stats */
-                    .target-table th:nth-child(5),
-                    .target-table td:nth-child(5) {
-                        width: 52px;
-                    }
-                    
-                    /* Status */
-                    .target-table th:nth-child(6),
-                    .target-table td:nth-child(6) {
-                        width: 85px;
-                    }
-                    
-                    /* Reason */
-                    .target-table th:nth-child(7),
-                    .target-table td:nth-child(7) {
-                        width: 55px;
-                    }
-                    
-                    /* Claimed */
-                    .target-table th:nth-child(8),
-                    .target-table td:nth-child(8) {
-                        width: 54px;
-                    }
-                                /* Action */
-                
-                                .profile-link {
-                                    max-width: 90px;
-                                }
-        /* Stats cell mobile styling */
-        .stats-cell {
+.target-table th:nth-child(3),
+.target-table td:nth-child(3) {
+    width: 30px;
+        text-align: center;
     
-            font-size: 0.7rem !important;
-                        white-space: nowrap !important;
-                        line-height: 1.3;
-        
-        .stats-cell .stats-value {
+        .target-table th:nth-child(4),
+        .target-table td:nth-child(4) {
+            width: 85px;
+        }
+        .target-table th:nth-child(5),
+        .target-table td:nth-child(5) {
+            width: 52px;
+        }
+        .target-table th:nth-child(6),
+        .target-table td:nth-child(6) {
+            width: 85px;
+        }
+        .target-table th:nth-child(7),
+        .target-table td:nth-child(7) {
+            width: 55px;
+        }
+        .target-table th:nth-child(8),
+        .target-table td:nth-child(8) {
+            width: 54px;
+        }
+.profile-link {
+    max-width: 90px;
+}
+/* Stats cell */
+.stats-cell {
+        font-size: 0.7rem !important;
+            white-space: nowrap !important;
+            line-height: 1.3;
+    
+.stats-cell .stats-value {
         font-size: 0.72rem !important;
-            font-weight: 600;
+        font-weight: 600;
     }
 
-                .stats-source {
-                    font-size: 0.5rem !important;
-                    padding: 0px 2px !important;
-                }
-.stats-source.ff-score {
-    font-size: 0.52rem !important;
-    padding: 1px 3px !important;
+        .stats-source {
+            font-size: 0.5rem !important;
+            padding: 0px 2px !important;
+        }
+
+        .stats-source.ff-score {
+            font-size: 0.52rem !important;
+            padding: 1px 3px !important;
     }
 
     /* Timer cell */
     .timer-cell {
         font-size: 0.72rem;
-            min-width: 55px;
+        min-width: 55px;
             font-weight: 600;
     }
 
     /* Name cell */
     .name-cell {
         font-size: 0.72rem;
-            min-width: 100px;
+        min-width: 100px;
         }
         
         .player-links {
         gap: 3px;
-        }
-        
-        .player-links a,
-        .player-links button {
+    .player-links a,
+    .player-links button {
         font-size: 0.68rem;
-            padding: 2px 5px;
+        padding: 2px 5px;
         }
         
         .profile-link {
             white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-                                                                /* Online status */
+
+        /* Online status */
         .online-cell {
         font-size: 0.72rem;
-            min-width: 50px;
+        min-width: 50px;
         }
         
-                                                                .online-content {
-                                                                    gap: 3px;
-                                                                }
-                                                                .online-dot {
-                    width: 7px;
-                        height: 7px;
-                    }
-.online-text {
-    display: inline !important;
+        .online-content {
+            gap: 3px;
+        }
+
+        .online-dot {
+            width: 7px;
+            height: 7px;
+        }
+
+        .online-text {
+            display: inline !important;
         font-size: 0.68rem;
-        }
-        
-        /* Reason column */
-        .reason-cell {
+    /* Reason column */
+    .reason-cell {
         max-width: 90px;
-            font-size: 0.68rem;
+        font-size: 0.68rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1468,21 +1439,16 @@ header h1 {
         /* Claim column */
         .claim-cell {
         font-size: 0.68rem;
-            min-width: 50px;
+        min-width: 50px;
         }
-                                                                /* Touch-friendly buttons */
-                                                                .btn-claim,
-                                                                .btn-unclaim {
-                                                                    padding: 5px 8px;
-                                                                    font-size: 0.72rem;
-                                                                    min-height: 28px;
+
+        /* Touch-friendly buttons */
+        .btn-claim,
+        .btn-unclaim {
+            padding: 5px 8px;
+            font-size: 0.72rem;
+            min-height: 28px;
             touch-action: manipulation;
-        }
-    
-        /* Level column */
-        .target-table th:nth-child(3),
-                                                                .target-table td:nth-child(3) {
-        text-align: center;
     }
 }
 
@@ -1501,51 +1467,46 @@ header h1 {
     }
 
         .header-stats {
-    font-size: 0.72rem;
-                        gap: 8px;
+            font-size: 0.72rem;
+            gap: 8px;
     
-/* Stats bar - 2 columns on very small screens */
-.stat {
-    }
-                padding: 5px 8px;
-                min-width: calc(50% - 2px);
+
+        /* Stats bar - 2 columns */
+        .stat {
+        padding: 5px 8px;
+            min-width: calc(50% - 2px);
     
 .stat-value {
-    
-                font-size: 1rem;
+        font-size: 1rem;
     
 .stat-label {
         font-size: 0.6rem;
-        }
-        
-        /* User status bar */
+    /* User status bar */
     .user-status-bar {
         gap: 4px;
-            padding: 4px;
+        padding: 4px;
     }
 
     .user-status-item {
         gap: 3px;
-            flex-basis: calc(50% - 2px);
+        flex-basis: calc(50% - 2px);
             padding: 4px;
     }
 
     .user-status-label {
         font-size: 0.68rem;
-            min-width: 26px;
+        min-width: 26px;
     }
 
     .bar-container {
-    min-width: 60px;
-                height: 14px;
+        min-width: 60px;
+            height: 14px;
     
 .bar-text {
         font-size: 0.68rem;
-        }
-        
-        .cooldown-item {
+    .cooldown-item {
         flex-basis: calc(33.33% - 3px);
-            min-width: 60px;
+        min-width: 60px;
             padding: 4px;
         }
 
@@ -1555,18 +1516,16 @@ header h1 {
     }
 
         .cooldown-label {
-    }
-                font-size: 0.62rem;
+        font-size: 0.62rem;
     
 /* Chain display */
     .chain-item {
         padding: 4px 8px;
-            gap: 2px;
+        gap: 2px;
     }
 
         .chain-label {
-    }
-                font-size: 0.62rem;
+        font-size: 0.62rem;
     
 .chain-count {
         font-size: 0.85rem;
@@ -1580,83 +1539,81 @@ header h1 {
     .toggle-btn-compact {
         padding: 5px 10px;
         font-size: 0.68rem;
-        }
-        
-        /* Filter buttons */
-                                                                .filter-group {
-                                                                    min-width: calc(50% - 2px);
-                                                                }
+    /* Filter buttons */
+    .filter-group {
+        min-width: calc(50% - 2px);
+    }
+
         .filter-btn {
             padding: 4px 5px;
-                font-size: 0.68rem;
-                min-width: 0;
+            font-size: 0.68rem;
+            min-width: 0;
         }
-        
+    
         .range-input {
         width: 55px;
-            font-size: 0.72rem;
+        font-size: 0.72rem;
             padding: 5px;
         }
         
         .range-select {
         font-size: 0.72rem;
-            padding: 5px;
+        padding: 5px;
         }
         
         .action-controls .btn {
             padding: 6px 10px;
         font-size: 0.78rem;
-        }
-        
-        /* Table adjustments */
-        .target-table {
+    /* Table adjustments */
+    .target-table {
         font-size: 0.68rem;
-            min-width: 540px;
+        min-width: 540px;
         }
         
         .target-table th,
         .target-table td {
         padding: 5px 4px;
-            font-size: 0.68rem;
+        font-size: 0.68rem;
         }
         
-                                /* Narrower columns on tiny screens */
-                                .target-table th:nth-child(1),
-                                .target-table td:nth-child(1) {
-                                    width: 50px;
-                                }
-                
-                                .target-table th:nth-child(3),
-                                .target-table td:nth-child(3) {
-                                    width: 26px;
-                                }
+        /* Narrower columns on tiny screens */
+        .target-table th:nth-child(1),
+        .target-table td:nth-child(1) {
+            width: 50px;
+        }
+        
+        .target-table th:nth-child(3),
+        .target-table td:nth-child(3) {
+            width: 26px;
+        }
+
         .target-table th:nth-child(4),
-                                .target-table td:nth-child(4) {
-                    width: 78px;
-                    }
-                    
-                    .target-table th:nth-child(5),
-                    .target-table td:nth-child(5) {
-                        width: 45px;
-                    }
-                    
-                    .target-table th:nth-child(6),
-                    .target-table td:nth-child(6) {
-                        width: 75px;
-                    }
-                    
-                    .target-table th:nth-child(7),
-                    .target-table td:nth-child(7) {
-                        width: 50px;
-                    }
-                    
-                    .target-table th:nth-child(8),
-                    .target-table td:nth-child(8) {
-                        width: 50px;
-                    }
-                    
-                    .profile-link {
-                        max-width: 75px;
+        .target-table td:nth-child(4) {
+            width: 78px;
+        }
+    
+        .target-table th:nth-child(5),
+        .target-table td:nth-child(5) {
+            width: 45px;
+        }
+    
+        .target-table th:nth-child(6),
+        .target-table td:nth-child(6) {
+            width: 75px;
+        }
+    
+        .target-table th:nth-child(7),
+        .target-table td:nth-child(7) {
+            width: 50px;
+        }
+    
+        .target-table th:nth-child(8),
+        .target-table td:nth-child(8) {
+            width: 50px;
+        }
+    
+        .profile-link {
+            max-width: 75px;
         }
     
         .stats-cell {
@@ -1665,53 +1622,53 @@ header h1 {
     
         .stats-cell .stats-value {
         font-size: 0.68rem !important;
-        }
-                                                                .stats-source.ff-score {
-                                                                    font-size: 0.48rem !important;
+    
+
+        .stats-source.ff-score {
+            font-size: 0.48rem !important;
         }
     
         .timer-cell {
         min-width: 50px;
-            font-size: 0.68rem;
+        font-size: 0.68rem;
         }
         
         .name-cell {
         min-width: 90px;
-            font-size: 0.68rem;
+        font-size: 0.68rem;
         }
         
         .player-links a,
         .player-links button {
         font-size: 0.62rem;
-            padding: 2px 4px;
+        padding: 2px 4px;
         }
         
         .online-cell {
         min-width: 45px;
-            font-size: 0.68rem;
+        font-size: 0.68rem;
         }
         
         .online-text {
         font-size: 0.62rem;
-        }
-        
-        .reason-cell {
+    .reason-cell {
         max-width: 80px;
-            font-size: 0.62rem;
+        font-size: 0.62rem;
         }
         
         .claim-cell {
         font-size: 0.62rem;
-            min-width: 48px;
+        min-width: 48px;
         }
-                                                                .btn-claim,
-                                                                .btn-unclaim {
-                                                                    padding: 4px 6px;
-                                                                    font-size: 0.68rem;
-                                                                    min-height: 26px;
+
+        .btn-claim,
+        .btn-unclaim {
+            padding: 4px 6px;
+            font-size: 0.68rem;
+            min-height: 26px;
     }
 
-                                                                /* Config panel on tiny screens */
+        /* Config panel on tiny screens */
         .config-form {
         gap: 8px;
     }
