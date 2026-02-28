@@ -144,15 +144,23 @@ function loadConfig() {
     if (!state.apiKey) {
         elements.configPanel.classList.add('visible');
     } else {
-        // Fetch user info from backend, then start polling
-        fetchUserInfoFromApiKey(state.apiKey, false, () => {
-            state.isUserInfoLoaded = true;
-            startPolling();
-        });
+        // Fetch user info from backend, then start polling and load targets immediately
+        (async () => {
+            try {
+                await fetchUserInfoFromApiKey(state.apiKey, false);
+                state.isUserInfoLoaded = true;
+                startPolling();
+                // Force immediate target load after API key is set
+                await fetchStatus();
+            } catch (e) {
+                // Error already handled in fetchUserInfoFromApiKey
+                console.error('Failed to initialize on load:', e);
+            }
+        })();
     }
 }
 
-function saveConfig() {
+async function saveConfig() {
     state.apiKey = elements.apiKey.value;
     const oldChainWatch = state.chainWatch;
     state.notifyClaimExpiry = elements.notifyClaimExpiry.checked;
@@ -184,10 +192,16 @@ function saveConfig() {
         }
         
         // Fetch user info from backend, then start polling
-        fetchUserInfoFromApiKey(state.apiKey, true, () => {
+        try {
+            await fetchUserInfoFromApiKey(state.apiKey, true);
+            // User info loaded successfully - now start polling and fetch targets
             state.isUserInfoLoaded = true;
             startPolling();
-        });
+            // Ensure targets are fetched immediately
+            await fetchStatus();
+        } catch (e) {
+            console.error('Failed to initialize after saving config:', e);
+        }
     } else {
         showToast('Please enter your API key', 'error');
     }
@@ -260,6 +274,62 @@ function setupEventListeners() {
             userStatus.lastDismissedChainCount = userStatus.chain.current;
         });
     }
+
+    // Tooltip logic for stats and travel columns (click/tap and hover)
+    setupTooltipListeners();
+}
+
+function setupTooltipListeners() {
+    function showTooltip(el) {
+        // Remove any existing tooltips first
+        document.querySelectorAll('.custom-tooltip').forEach(tip => tip.remove());
+        const tooltip = document.createElement('div');
+        tooltip.className = 'custom-tooltip';
+        tooltip.textContent = el.dataset.tooltip;
+        document.body.appendChild(tooltip);
+        const rect = el.getBoundingClientRect();
+        tooltip.style.left = `${rect.left + window.scrollX}px`;
+        tooltip.style.top = `${rect.bottom + window.scrollY + 4}px`;
+        el._tooltip = tooltip;
+    }
+
+    function hideTooltip(el) {
+        if (el._tooltip) {
+            el._tooltip.remove();
+            el._tooltip = null;
+        }
+    }
+
+    // Click/tap to toggle tooltip (works on mobile and desktop)
+    document.body.addEventListener('click', e => {
+        const el = e.target.closest('.tooltip-trigger');
+        if (el) {
+            e.preventDefault();
+            if (el._tooltip) {
+                hideTooltip(el);
+            } else {
+                showTooltip(el);
+            }
+        } else {
+            // Click outside - hide all tooltips
+            document.querySelectorAll('.custom-tooltip').forEach(tip => tip.remove());
+        }
+    });
+
+    // Hover for desktop
+    document.body.addEventListener('mouseover', e => {
+        const el = e.target.closest('.tooltip-trigger');
+        if (el && window.innerWidth > 800 && !el._tooltip) {
+            showTooltip(el);
+        }
+    });
+
+    document.body.addEventListener('mouseout', e => {
+        const el = e.target.closest('.tooltip-trigger');
+        if (el) {
+            hideTooltip(el);
+        }
+    });
 }
 
 function applyStatFilter(filter) {
@@ -1137,40 +1207,65 @@ function renderTargetRow(target) {
         claimButton = `<button class="btn btn-claim claim-btn" data-target-id="${target.user_id}">Claim</button>`;
     }
     
-    // Travel times (seconds) for airstrip + business class ticket
-
-    // Torn Wiki travel times (airstrip + business class ticket, in seconds)
+    // Torn Wiki travel times in seconds
+    // Source: https://wiki.torn.com/wiki/Travel
     const travelTimes = {
-        "Argentina": 900,
-        "Mexico": 900,
-        "Hawaii": 900,
-        "UAE": 900,
-        "Japan": 900,
-        "China": 900,
-        "South Africa": 900,
-        "Switzerland": 900,
-        "United Kingdom": 900,
-        "Canada": 900,
-        "United States": 900,
-        "Cayman Islands": 900,
-        "Russia": 900,
-        "France": 900,
-        "Italy": 900,
-        "Spain": 900,
-        "Netherlands": 900,
-        "Australia": 900,
-        "Brazil": 900,
-        "Torn": 0 // Default/fallback (already in Torn)
+        "Mexico":           { airstrip: 1080, businessClass: 480 },   // 18min / 8min
+        "Cayman Islands":   { airstrip: 1500, businessClass: 660 },   // 25min / 11min
+        "Canada":           { airstrip: 1740, businessClass: 720 },   // 29min / 12min
+        "Hawaii":           { airstrip: 5640, businessClass: 2400 },  // 1h34m / 40min
+        "United Kingdom":   { airstrip: 6660, businessClass: 2880 },  // 1h51m / 48min
+        "Argentina":        { airstrip: 7020, businessClass: 3000 },  // 1h57m / 50min
+        "Switzerland":      { airstrip: 7380, businessClass: 3180 },  // 2h3m / 53min
+        "Japan":            { airstrip: 9480, businessClass: 4080 },  // 2h38m / 1h8m
+        "China":            { airstrip: 10140, businessClass: 4320 }, // 2h49m / 1h12m
+        "UAE":              { airstrip: 11400, businessClass: 4860 }, // 3h10m / 1h21m
+        "South Africa":     { airstrip: 12480, businessClass: 5340 }, // 3h28m / 1h29m
+        "Torn":             { airstrip: 0, businessClass: 0 }         // Already in Torn
     };
+    
+    // Extract country name from full travel text like "Traveling to Japan" or "Returning to Torn from Cayman Islands"
+    function extractCountryFromTravelText(text) {
+        if (!text) return null;
+        
+        // Match "Traveling to [Country]" or "In [Country]"
+        let match = text.match(/^(?:Traveling to|In)\s+(.+)$/i);
+        if (match) return match[1].trim();
+        
+        // Match "Returning to Torn from [Country]"
+        match = text.match(/^Returning to Torn from\s+(.+)$/i);
+        if (match) return match[1].trim();
+        
+        // Match "Returning from [Country]"
+        match = text.match(/^Returning from\s+(.+)$/i);
+        if (match) return match[1].trim();
+        
+        // If it's just a country name, return as-is
+        if (travelTimes[text] !== undefined) return text;
+        
+        return null;
+    }
 
-    // Helper: get time left and landing time
+    // Helper: get time left and landing time for both airstrip and business class
     function getTravelInfo(target) {
         if (!target.traveling || !target.travel_destination || !target.travel_started) return null;
         const now = Math.floor(Date.now() / 1000);
-        const duration = travelTimes[target.travel_destination] || 1800;
-        const landing = target.travel_started + duration;
-        const timeLeft = Math.max(0, landing - now);
-        return { destination: target.travel_destination, timeLeft, landing };
+        
+        // Extract country name from travel_destination which might be full text
+        const country = extractCountryFromTravelText(target.travel_destination);
+        const durations = (country && travelTimes[country]) ? travelTimes[country] : { airstrip: 1800, businessClass: 900 };
+        
+        const landingAirstrip = target.travel_started + durations.airstrip;
+        const landingBC = target.travel_started + durations.businessClass;
+        const timeLeftAirstrip = Math.max(0, landingAirstrip - now);
+        const timeLeftBC = Math.max(0, landingBC - now);
+        
+        return {
+            destination: target.travel_destination,
+            country: country,
+            airstrip: { timeLeft: timeLeftAirstrip, landing: landingAirstrip },
+            businessClass: { timeLeft: timeLeftBC, landing: landingBC }
+        };
     }
 
     // Reason column logic
@@ -1178,28 +1273,68 @@ function renderTargetRow(target) {
     let reasonTooltip = '';
     const travelInfo = getTravelInfo(target);
     if (travelInfo) {
-        // Determine if returning (destination is Torn)
-        if (travelInfo.destination === 'Torn') {
-            // Show 'Returning from [origin]' if origin is known
-            const origin = target.travel_origin || 'Unknown';
-            reasonHtml = `Returning from ${escapeHtml(origin)} (<span class="travel-timer">${formatTime(travelInfo.timeLeft)}</span>)`;
-            reasonTooltip = `Estimated arrival: ${new Date(travelInfo.landing * 1000).toLocaleTimeString()}\nBusiness class ticket used (airstrip time)`;
+        // Build the display text with timer (using airstrip time)
+        const dest = travelInfo.destination;
+        const timerTextAirstrip = formatTime(travelInfo.airstrip.timeLeft);
+        const timerTextBC = formatTime(travelInfo.businessClass.timeLeft);
+        let displayText = '';
+        
+        // Check if destination already contains full travel text (from API)
+        const isFullTravelText = /^(Traveling|Returning|In |Landed)/i.test(dest);
+
+        if (isFullTravelText) {
+            // Use as-is - the API already gave us the full description
+            displayText = dest;
+        } else if (dest === 'Torn') {
+            // Returning to Torn from somewhere
+            const origin = target.travel_origin || 'abroad';
+            displayText = `Returning from ${origin}`;
         } else {
-            reasonHtml = `Traveling to ${escapeHtml(travelInfo.destination)} (<span class="travel-timer">${formatTime(travelInfo.timeLeft)}</span>)`;
-            reasonTooltip = `Estimated landing: ${new Date(travelInfo.landing * 1000).toLocaleTimeString()}\nBusiness class ticket used (airstrip time)`;
+            // Traveling to a destination
+            displayText = `Traveling to ${dest}`;
         }
+
+        // HTML with timer span for live updates (airstrip time)
+        reasonHtml = `${escapeHtml(displayText)} (<span class="travel-timer">${timerTextAirstrip}</span>)`;
+
+        // Tooltip shows both airstrip and business class times with landing times
+        const arrivalAirstrip = new Date(travelInfo.airstrip.landing * 1000).toLocaleTimeString();
+        const arrivalBC = new Date(travelInfo.businessClass.landing * 1000).toLocaleTimeString();
+        reasonTooltip = `${displayText}\n\nAirstrip:\n  Time left: ${timerTextAirstrip}\n  Landing: ${arrivalAirstrip}\n\nBusiness Class:\n  Time left: ${timerTextBC}\n  Landing: ${arrivalBC}`;
     } else if (target.traveling && target.travel_destination) {
-        if (target.travel_destination === 'Torn') {
-            const origin = target.travel_origin || 'Unknown';
-            reasonHtml = `Returning from ${escapeHtml(origin)}`;
-            reasonTooltip = `Returning (exact time unknown)`;
+        // No travel_started timestamp available, show without timer
+        const dest = target.travel_destination;
+        let displayText = '';
+        
+        // Check if destination already contains full travel text (from API)
+        const isFullTravelText = /^(Traveling|Returning|In |Landed)/i.test(dest);
+
+        if (isFullTravelText) {
+            // Use as-is
+            displayText = dest;
+        } else if (dest === 'Torn') {
+            const origin = target.travel_origin || 'abroad';
+            displayText = `Returning from ${origin}`;
         } else {
-            reasonHtml = `Traveling to ${escapeHtml(target.travel_destination)}`;
-            reasonTooltip = `Traveling (exact time unknown)`;
+            displayText = `Traveling to ${dest}`;
         }
+
+        reasonHtml = escapeHtml(displayText);
+        reasonTooltip = `${displayText}\nTravel time unknown (no start time available)`;
     } else if (target.hospital_reason) {
+        // Hospital reason - show full text in tooltip for mobile
         reasonHtml = escapeHtml(target.hospital_reason);
-        reasonTooltip = escapeHtml(target.hospital_reason);
+        reasonTooltip = target.hospital_reason;
+    } else if (target.in_hospital && target.hospital_until) {
+        // In hospital but no specific reason
+        const remaining = target.hospital_until - Math.floor(Date.now() / 1000);
+        if (remaining > 0) {
+            reasonHtml = `In hospital (<span class="timer">${formatTime(remaining)}</span>)`;
+            reasonTooltip = `In hospital (${formatTime(remaining)})\nReleased at: ${new Date(target.hospital_until * 1000).toLocaleTimeString()}`;
+        } else {
+            reasonHtml = 'Out of hospital';
+            reasonTooltip = 'Out of hospital';
+        }
     } else {
         reasonHtml = '-';
         reasonTooltip = '';
@@ -1269,57 +1404,52 @@ function renderTargetRow(target) {
             <td>${claimButton}</td>
         </tr>
     `;
-    // Tooltip logic for mobile/desktop
-    document.addEventListener('DOMContentLoaded', () => {
-        function showTooltip(el) {
-            let tooltip = document.createElement('div');
-            tooltip.className = 'custom-tooltip';
-            tooltip.textContent = el.dataset.tooltip;
-            document.body.appendChild(tooltip);
-            const rect = el.getBoundingClientRect();
-            tooltip.style.left = `${rect.left + window.scrollX}px`;
-            tooltip.style.top = `${rect.bottom + window.scrollY + 4}px`;
-            el._tooltip = tooltip;
-        }
-        function hideTooltip(el) {
-            if (el._tooltip) {
-                el._tooltip.remove();
-                el._tooltip = null;
-            }
-        }
-        document.body.addEventListener('mouseover', e => {
-            const el = e.target.closest('.tooltip-trigger');
-            if (el && window.innerWidth > 800) showTooltip(el);
-        });
-        document.body.addEventListener('mouseout', e => {
-            const el = e.target.closest('.tooltip-trigger');
-            if (el) hideTooltip(el);
-        });
-        document.body.addEventListener('click', e => {
-            const el = e.target.closest('.tooltip-trigger');
-            if (el) {
-                if (el._tooltip) hideTooltip(el);
-                else showTooltip(el);
-            }
-        });
-        // On mobile, show tooltip on tap
-        document.body.addEventListener('touchstart', e => {
-            const el = e.target.closest('.tooltip-trigger');
-            if (el) {
-                if (el._tooltip) hideTooltip(el);
-                else showTooltip(el);
-            }
-        });
-    });
 }
 
 function renderTargets() {
     let targets = state.targets || [];
+    // Apply filters
+    targets = targets.filter(target => {
+        // Hospital filter
+        if (state.filters.hospital === 'in' && !target.in_hospital) return false;
+        if (state.filters.hospital === 'out' && target.in_hospital) return false;
+        // Claim filter
+        if (state.filters.claim === 'claimed' && !target.claimed_by) return false;
+        if (state.filters.claim === 'unclaimed' && target.claimed_by) return false;
+        if (state.filters.claim === 'myclaims' && target.claimed_by_id !== parseInt(state.userId)) return false;
+        // Online filter
+        if (state.filters.online === 'online' && target.estimated_online !== 'online') return false;
+        if (state.filters.online === 'offline' && target.estimated_online !== 'offline') return false;
+        // Travel filter
+        if (state.filters.travel === 'traveling' && !target.traveling) return false;
+        if (state.filters.travel === 'local' && target.traveling) return false;
+        // Stats filter
+        const stats = target.ff_estimated_stats || target.yata_estimated_stats || target.estimated_stats || 0;
+        if (stats < state.filters.statsMin || stats > state.filters.statsMax) return false;
+        return true;
+    });
     if (targets.length === 0) {
         elements.targetList.innerHTML = `<tr><td colspan="8" class="loading">${state.targets.length === 0 
             ? 'No targets loaded. Check API configuration.' 
             : 'No targets match the current filters.'}</td></tr>`;
         return;
+    }
+    // Table sorting
+    if (state.sortBy) {
+        const sortKey = state.sortBy;
+        const dir = state.sortDir === 'asc' ? 1 : -1;
+        targets.sort((a, b) => {
+            let va = a[sortKey], vb = b[sortKey];
+            // For stats, use best available
+            if (sortKey === 'stats') {
+                va = a.ff_estimated_stats || a.yata_estimated_stats || a.estimated_stats || 0;
+                vb = b.ff_estimated_stats || b.yata_estimated_stats || b.estimated_stats || 0;
+            }
+            if (typeof va === 'string' && typeof vb === 'string') {
+                return va.localeCompare(vb) * dir;
+            }
+            return (va - vb) * dir;
+        });
     }
     const html = targets.map(target => renderTargetRow(target)).join('');
     elements.targetList.innerHTML = html;
@@ -1346,6 +1476,7 @@ async function fetchUserInfoFromApiKey(apiKey, closePanelOnSuccess = false, onSu
                 showToast('Configuration saved!', 'success');
             }
             if (typeof onSuccess === 'function') onSuccess();
+            return true; // Success
         } else {
             throw new Error('Could not fetch user info');
         }
@@ -1353,6 +1484,7 @@ async function fetchUserInfoFromApiKey(apiKey, closePanelOnSuccess = false, onSu
         showToast('Invalid API key or unable to fetch user info', 'error');
         elements.configPanel.classList.add('visible');
         state.isUserInfoLoaded = false;
+        throw e; // Rethrow so callers can handle
     }
 }
 
