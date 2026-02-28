@@ -11,7 +11,7 @@ from typing import Optional
 import httpx
 
 from .models import PlayerStatus, HospitalStatus, OnlineStatus, FactionInfo, HitClaim
-from .cache import hospital_cache, player_cache, faction_cache, rate_limiter
+from .cache import hospital_cache, player_cache, faction_cache, rate_limiter, travel_tracker
 
 
 TORN_API_BASE = "https://api.torn.com"
@@ -285,9 +285,13 @@ class TornClient:
             is_traveling = status_state in ("Traveling", "Abroad")
             travel_destination = ""
             travel_until = None
+            travel_started = None
             if is_traveling:
                 travel_destination = status.get("description", "")
                 travel_until = status.get("until", 0) if status.get("until") else None
+            
+            # Track departure time (shared across all clients)
+            travel_started = travel_tracker.track(user_id, is_traveling)
 
             # Infer online status from last action
             last_action = member_data.get("last_action", {})
@@ -318,6 +322,7 @@ class TornClient:
                 traveling=is_traveling,
                 travel_destination=travel_destination,
                 travel_until=travel_until,
+                travel_started=travel_started,
                 last_action_ts=last_action_ts if last_action_ts else None,
                 last_action_relative=last_action_relative,
                 estimated_online=online_status,

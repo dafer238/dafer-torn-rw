@@ -1248,24 +1248,40 @@ function renderTargetRow(target) {
 
     // Helper: get time left and landing time for both airstrip and business class
     function getTravelInfo(target) {
-        if (!target.traveling || !target.travel_destination || !target.travel_started) return null;
+        if (!target.traveling || !target.travel_destination) return null;
         const now = Math.floor(Date.now() / 1000);
         
         // Extract country name from travel_destination which might be full text
         const country = extractCountryFromTravelText(target.travel_destination);
         const durations = (country && travelTimes[country]) ? travelTimes[country] : { airstrip: 1800, businessClass: 900 };
         
-        const landingAirstrip = target.travel_started + durations.airstrip;
-        const landingBC = target.travel_started + durations.businessClass;
-        const timeLeftAirstrip = Math.max(0, landingAirstrip - now);
-        const timeLeftBC = Math.max(0, landingBC - now);
+        // Use travel_started if available (tracked server-side)
+        // Fall back to travel_until if not (use actual API landing time)
+        if (target.travel_started) {
+            const landingAirstrip = target.travel_started + durations.airstrip;
+            const landingBC = target.travel_started + durations.businessClass;
+            const timeLeftAirstrip = Math.max(0, landingAirstrip - now);
+            const timeLeftBC = Math.max(0, landingBC - now);
+            
+            return {
+                destination: target.travel_destination,
+                country: country,
+                airstrip: { timeLeft: timeLeftAirstrip, landing: landingAirstrip },
+                businessClass: { timeLeft: timeLeftBC, landing: landingBC }
+            };
+        } else if (target.travel_until) {
+            // Fallback: use actual API landing time (we don't know the travel method)
+            const timeLeft = Math.max(0, target.travel_until - now);
+            return {
+                destination: target.travel_destination,
+                country: country,
+                airstrip: { timeLeft: timeLeft, landing: target.travel_until },
+                businessClass: { timeLeft: timeLeft, landing: target.travel_until },
+                isActualTime: true  // Flag to indicate this is the actual time, not an estimate
+            };
+        }
         
-        return {
-            destination: target.travel_destination,
-            country: country,
-            airstrip: { timeLeft: timeLeftAirstrip, landing: landingAirstrip },
-            businessClass: { timeLeft: timeLeftBC, landing: landingBC }
-        };
+        return null;
     }
 
     // Reason column logic
@@ -1300,7 +1316,14 @@ function renderTargetRow(target) {
         // Tooltip shows both airstrip and business class times with landing times
         const arrivalAirstrip = new Date(travelInfo.airstrip.landing * 1000).toLocaleTimeString();
         const arrivalBC = new Date(travelInfo.businessClass.landing * 1000).toLocaleTimeString();
-        reasonTooltip = `${displayText}\n\nAirstrip:\n  Time left: ${timerTextAirstrip}\n  Landing: ${arrivalAirstrip}\n\nBusiness Class:\n  Time left: ${timerTextBC}\n  Landing: ${arrivalBC}`;
+        
+        if (travelInfo.isActualTime) {
+            // Fallback: using actual API time, not estimate
+            reasonTooltip = `${displayText}\n\nActual landing: ${arrivalAirstrip}\nTime left: ${timerTextAirstrip}`;
+        } else {
+            // Full estimate display
+            reasonTooltip = `${displayText}\n\nAirstrip:\n  Time left: ${timerTextAirstrip}\n  Landing: ${arrivalAirstrip}\n\nBusiness Class:\n  Time left: ${timerTextBC}\n  Landing: ${arrivalBC}`;
+        }
     } else if (target.traveling && target.travel_destination) {
         // No travel_started timestamp available, show without timer
         const dest = target.travel_destination;

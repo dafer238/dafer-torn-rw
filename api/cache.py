@@ -380,3 +380,54 @@ rate_limiter = RateLimiter(max_requests=90, window_seconds=60)  # Leave 10 buffe
 # Long-TTL, large data: disk-backed (SQLite)
 # YATA estimates cached for 7 days - no RAM impact
 yata_cache = DiskCache("yata", default_ttl=604800)
+
+
+class TravelDepartureTracker:
+    """
+    Track when players started traveling.
+    Shared across all clients - minimal RAM (one int per traveling player).
+    Automatically cleans up players who stopped traveling.
+    """
+
+    def __init__(self):
+        self._departures: dict[int, int] = {}  # user_id -> departure timestamp
+        self._lock = Lock()
+
+    def track(self, user_id: int, is_traveling: bool) -> Optional[int]:
+        """
+        Track a player's travel state.
+        
+        Args:
+            user_id: Player's user ID
+            is_traveling: Whether player is currently traveling
+            
+        Returns:
+            Departure timestamp if traveling, None if not
+        """
+        with self._lock:
+            if is_traveling:
+                if user_id not in self._departures:
+                    # First time we see them traveling - record now as departure
+                    self._departures[user_id] = int(time.time())
+                return self._departures[user_id]
+            else:
+                # Not traveling - remove from tracker
+                self._departures.pop(user_id, None)
+                return None
+
+    def cleanup(self, active_user_ids: set[int]) -> None:
+        """Remove entries for players no longer in our tracking list."""
+        with self._lock:
+            self._departures = {
+                uid: ts for uid, ts in self._departures.items()
+                if uid in active_user_ids
+            }
+
+    def count(self) -> int:
+        """Number of currently tracked travelers."""
+        with self._lock:
+            return len(self._departures)
+
+
+# Global travel tracker instance (shared across all clients)
+travel_tracker = TravelDepartureTracker()

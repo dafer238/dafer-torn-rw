@@ -46,7 +46,8 @@ class PlayerStatus(BaseModel):
     # Travel status
     traveling: bool = False
     travel_destination: str = ""
-    travel_until: Optional[int] = None
+    travel_until: Optional[int] = None  # When travel ends (from API)
+    travel_started: Optional[int] = None  # When travel began (tracked server-side)
 
     # Online inference
     last_action_ts: Optional[int] = None  # Unix timestamp of last action
