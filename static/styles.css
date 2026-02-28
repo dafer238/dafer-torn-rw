@@ -274,6 +274,8 @@ header h1 {
     padding: 4px 10px;
     border-radius: 4px;
     margin-left: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
 }
 
 .status-state {
@@ -1235,7 +1237,9 @@ header h1 {
     .status-item {
         flex-basis: 100%;
         margin-left: 0;
-        text-align: left;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 
     .toggle-btn-compact {
