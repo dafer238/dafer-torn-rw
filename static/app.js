@@ -1462,6 +1462,7 @@ function renderTargets() {
     if (state.sortBy) {
         const sortKey = state.sortBy;
         const dir = state.sortDir === 'asc' ? 1 : -1;
+        const now = Math.floor(Date.now() / 1000);
         targets.sort((a, b) => {
             let va = a[sortKey], vb = b[sortKey];
             // For stats, use best available
@@ -1469,14 +1470,21 @@ function renderTargets() {
                 va = a.ff_estimated_stats || a.yata_estimated_stats || a.estimated_stats || 0;
                 vb = b.ff_estimated_stats || b.yata_estimated_stats || b.estimated_stats || 0;
             }
+            // For timer, use hospital_until; OUT people (no future timestamp) treated as 0
+            // so in ascending order they always appear at the top
+            if (sortKey === 'timer') {
+                va = (a.hospital_until && a.hospital_until > now) ? a.hospital_until : 0;
+                vb = (b.hospital_until && b.hospital_until > now) ? b.hospital_until : 0;
+            }
             if (typeof va === 'string' && typeof vb === 'string') {
                 return va.localeCompare(vb) * dir;
             }
-            return (va - vb) * dir;
+            return ((va || 0) - (vb || 0)) * dir;
         });
     }
     const html = targets.map(target => renderTargetRow(target)).join('');
     elements.targetList.innerHTML = html;
+    updateSortIndicators();
     updateTimers();
 }
 
